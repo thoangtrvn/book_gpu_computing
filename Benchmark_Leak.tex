@@ -1,0 +1,619 @@
+
+\chapter{Benchmark Leak}
+\label{chap:benchmark-leak}
+
+\section{Empty kernel}
+\label{sec:empty-kernel}
+
+Based on Visual Profiler benchmarking a CUDA Fortran code, an empty
+kernel use 2 (us) GPU time, and an overhead of about 40-50us per
+kernel call. This is the time involving setting up the counters in the
+profiler. So, in true runtime, it may be lower. 
+
+
+\begin{lstlisting}
+NSFU = 19968
+blocksize = 256
+gridSize = (NSFU+ blocksize -1) / blocksize
+CALL getCompPdt_3<<<gridSize, blocksize>>>()
+
+....
+
+attributes(global) SUBROUTINE getCompPdt_3()
+    USE cudafor
+    IMPLICIT NONE
+end subroutine
+\end{lstlisting}
+We have 74 thread blocks, running on Fermi.
+
+
+\begin{verbatim}
+sm_cta_launched = 6
+branch          = 48
+instr_issued    = 144
+instr_executed  = 96
+warp_launched   = 48
+occupancy       = 1
+registers       = 2
+\end{verbatim}
+So, the minimal number of registers is 2.
+
+\begin{framed}
+  {\bf Compiler optimization}: local variables, which are not being
+  used to update any global device memory data are automatically
+  removed.
+\end{framed}
+
+\section{IF or not IF statement}
+\label{sec:if-or-not}
+
+The first one has time 6-6.8 (us)) with overall CPU time 52-53 (us).
+\begin{lstlisting}
+ii =  (blockIdx%x-1) * blockDim%x + threadIdx%x
+indexPdt_dev(ii,1) = ii
+IF (ii .LE. int_ca(1)) THEN
+
+ENDIF
+\end{lstlisting}
+vs. 
+\begin{lstlisting}
+ii =  (blockIdx%x-1) * blockDim%x + threadIdx%x
+
+IF (ii .LE. int_ca(1)) THEN
+  indexPdt_dev(ii,1) = ii
+ENDIF
+\end{lstlisting}
+with time 4-5 (us) with overall CPU time 50-51 (us).
+
+The first one
+\begin{verbatim}
+registers       = 6
+gld_request     = 48
+gst_request     = 48
+instr_issued    = 1668
+instr_executed  = 1056
+L1_global_load_miss = 48 ???
+occupancy       = 1
+\end{verbatim}
+
+{\bf Why we need 6 registers}: the reason is that any computation
+needs to use registers. So, if the data is not a literal constant or
+not already on registers, it needs to load the data (from either
+local, global, shared memory, constant...) to the register. So, we
+need: 
+\begin{itemize}
+\item 4 registers to keep \verb!blockIdx%x!, \verb!blockDim%x!,
+  \verb!threadIdx%x!, \verb!ii!, \verb!int_ca(1)!
+\item 1 register to hold the result of the comparison
+\item 1 register to  ...
+\end{itemize}
+
+However, the latter method, i.e. put everything inside the IF
+statement, is better as it has lower counters
+\begin{verbatim}
+instr_issued   = 1009
+instr_executed = 720
+L1_global_load_miss = 0  
+\end{verbatim}
+
+\begin{framed}
+  {\bf Conclusion}: It's better to use an IF statement to wrap your
+  code, which limit the number of operations to be done in case the
+  work load is not divisible to the number of block size. 
+\end{framed}
+
+\section{Why L1 global load miss}
+\label{sec:why-l1-global}
+
+We substitute 
+\begin{verbatim}
+  indexPdt_dev(ii,1) = ii
+\end{verbatim}
+by 
+\begin{verbatim}
+   compPdt_dev(ii,1) = isfu_dev(ii)
+\end{verbatim}
+The GPU time increase to 6.2-6.5 (us), the CPU overall time is 52-53
+(us). Here, there is a latency as it need to access (read) the data
+\verb!isfu_dev! from global device memory.
+\textcolor{red}{Additional read from device memory has been hidden
+  mostly, and increase only 1 (us) more}.
+
+\begin{lstlisting}
+ii =  (blockIdx%x-1) * blockDim%x + threadIdx%x
+IF (ii .LE. int_ca(1)) THEN
+   compPdt_dev(ii,1) = isfu_dev(ii)
+ENDIF
+\end{lstlisting}
+The counters are
+\begin{verbatim}
+instr_issued   = 1670
+instr_executed = 1056
+L1_global_load_miss = 48
+\end{verbatim}
+The \verb!L1 global load miss! is the same as the \verb!gld_request!
+and \verb!gst_request!. The reason is that the compiler first check if
+\verb!isfu_dev(ii)! is cached or not. At the first, it isn't, so L1
+global load miss occur. So, there is no problem with this ``miss''. 
+
+\begin{framed}
+  {\bf Conclusion}: It's normal to have \verb!L1_global_cache_miss! in
+  the kernel and you need to investigate whether this is the miss due
+  to the first time access or what. 
+\end{framed}
+
+\section{Using regular execution units, e.g. multiplication}
+\label{sec:multiplication}
+
+The GPU time is 7.5-8.5 (us) and CPU overall time is 53-54 (us) which
+is non-significant change in execution time when we have an additional
+multiplication operation. We will see the problem when we use
+exponential. 
+\begin{lstlisting}
+ii =  (blockIdx%x-1) * blockDim%x + threadIdx%x
+IF (ii .LE. int_ca(1)) THEN
+   ct = isfu_dev(ii)
+   indexPdt_dev(ii,1) = ct
+   
+   bigC = Ca_ds_dev(ii)*dp_ca(4)
+   compPdt_dev(ii,1) = bigC
+ENDIF
+\end{lstlisting}
+The counters
+\begin{lstlisting}
+gld_request     = 96 (we need +48 to load Ca_ds_dev)
+gst_request     = 96 (we need +48 to store compPdt_dev)
+L1_global_load_miss = 144 
+instr_issued    = 2642
+instr_executed  = 1776
+registers       = 10
+occupancy       = 1
+\end{lstlisting}
+Here, we have three times of \verb!L1_global_load_miss!, each time
+increase +48. So, totally we have 144 L1 global load miss. 
+
+\section{Using special functional units, e.g. exponential}
+\label{sec:using-spec-funct}
+
+\begin{enumerate}
+\item In Fermi, each SM has 32 execution units, while only 4 SFUs to do
+  transcendental functions (exp(), sin(), cos(), reciprocal, sqrt).
+
+\item In addition, while using regular operations, 2 warp schedulers
+  simultaneously to issue instructions to 2 separate warps, with SFUs,
+  only a single warp scheduler can issue the instruction at a time
+  (and they do that in turn), and to 4 cores (i.e. 4 SFUs), instead of
+  16 cores.
+\item It takes 2 clock cycles to issue a inter or floating-point or
+  double-precision floating-point arithmetic operations. Each SFU
+  execute one instruction per thread, per clock. So, with 32 threads
+  and 4SFU, it takes 8 clock cycles for a single-precision FP
+  transcendental function in a warp, or 16 cycles for double-precision
+  FP transcendental function in a warp. 
+\end{enumerate}
+
+So, the throughput for native instructions are given as follows
+\begin{table}[hbt]
+  \centering
+  \begin{tabular}{|p{5cm}|cc|}
+    & CC 1.x & CC 2.0 \\
+    32-bit FP (add/multiply/multiply-add) & 8 & 32\\
+    32-bit FP (add/multiply/multiply-add) & 1 & 16 \\
+    32-bit integer (add/logical) & 8 & 32 \\
+    32-bit integer (shift/compare) & 8 & 32 \\
+    32-bit integer (...) & multiple & 16  \\
+    24-bit integer (...) & 8 & multiple \\
+    32-bit FP transcendental (reciprocal/reciprocal square root/base-2
+    logarithm/ base-2 exponential/sine/cosine & 2 & 4 \\
+    type conversion & 8 & 32 \\
+  \end{tabular}
+  \caption{Throughput of native arithmetic instructions (operations per clock cycle per SM)}
+  \label{tab:instr_throughput}
+\end{table}
+
+As shown in Table~\ref{tab:instr_throughput}, any where with
+\verb!multiple! means that operations is not effective implemented in
+the corresponding device. For example, using 24-bit operations is not
+recommended in Fermi.
+
+\begin{framed}
+  
+  Other types of functions are implemented based on these native
+  instructions. So, in the Visual Profiler, the counter reflect the
+  instruction (issued/executed) based on these native instructions, not
+  the instructions in general. 
+
+  For complicated functions, there can be different ways to combine
+  native instructions to do the work of that functions (i.e. different
+  code path). If you want to see how the compiler generated the code
+  path, in case you want to learn or modify that, you can use
+  \verb!cuobjdump! tool.
+\end{framed}
+
+Some compiler options may improve the performance (\verb!nvcc!
+compiler), yet can lead to lower precision
+\begin{enumerate}
+\item \verb!-ftz=true! : denormalized number are flused to zero,
+  better than using \verb!-ftz=false!
+\item \verb!-prec-div=false! : less precision precision, better than
+  \verb!-prec-div=true!.
+\item  \verb!-prec-sqrt=false! (less precision square-root), better
+  than \verb!-prec-sqrt=true!
+\end{enumerate}
+
+\subsection{sine, cosine}
+\label{sec:sine-cosine}
+
+\verb!sinf(x)!, \verb!cosf(x)!, tanf(x), \verb!sincosf(x)! and
+corresponding double-precision instructions are expensive, and even
+more if the magnitude of $x$ is big. There are two code paths, the
+faster one to use with small magnitude of x, and the slower one
+(\textcolor{red}{require more registers}) to use with large magnitude
+of x and higher magnitude.
+\textcolor{red}{It's recommended to rescale so that the magnitude of x
+  smaller than 48039.0f (for 32bit) and 2147483648.0 (for 64bit) as
+  possible if you want to use fast code path}.
+
+\begin{framed}
+  
+  To reduce the pressure of registers in the slow path, data are moved
+  to local memory which may affect some of the performance. At
+  present, 28 bytes of local memory are used for single-precision, and
+  44 bytes are used for
+  double-precision\footnote{This amount is subject to change.}. This
+  slow down the performance by one order of magnitude compared to the
+  fast path.
+\end{framed}
+
+
+\subsection{power}
+\label{sec:power}
+
+if $x^y$ with $y$ is an integer, it's better to convert to regular
+multiplication
+\begin{verbatim}
+x*x*x...*x  (y times)
+\end{verbatim}
+
+\subsection{Example}
+\label{sec:example}
+
+\begin{verbatim}
+IF (ii .LE. int_ca(1)) THEN
+   ct = isfu_dev(ii)
+   indexPdt_dev(ii,1) = ct
+
+   bigC = Ca_ds_dev(ii)**dp_ca(4)
+   compPdt_dev(ii,1) = bigC
+ENDIF
+\end{verbatim}
+Compared to the previous section, we see a dramatically drop-down in
+performance: the GPU time 24-25 (us) and the CPU overall time is 70-71
+(us), i.e. drop 30\% performance. More resources are required, i.e. 6x
+number of instructions to execute, 3x more registers per thread. 
+\begin{verbatim}
+gld_request     = 96 
+gst_request     = 96 
+L1_global_load_miss = 144 
+instr_issued    = 12754
+instr_executed  = 12480
+registers       = 33
+occupancy       = 0.5
+\end{verbatim}
+
+NOTE: Using shared memory doesn't help (session 34)
+\begin{verbatim}
+#define BLOCKSIZE 256
+REAL(KIND=DP), shared:: tmp(BLOCKSIZE)   
+
+ii =  (blockIdx%x-1) * blockDim%x + threadIdx%x
+IF (ii .LE. int_ca(1)) THEN
+
+   ...
+   tmp(threadIdx%x) = Ca_ds_dev(ii)
+ENDIF
+
+!! put synchronization out of IF statement
+call syncthreads()
+
+IF (ii .LE. int_ca(1)) THEN   
+   bigC = tmp(threadIdx%x)**dp_ca(4)
+   compPdt_dev(ii,1) = bigC
+ENDIF
+\end{verbatim}
+
+\section{Limit register usage}
+\label{sec:limit-register-usage}
+
+33 registers is at the boundary of 3 resident blocks vs. 4 resident
+blocks per SM (Sect.~\ref{sec:register-memory}). So, if we try to
+limit the number of registers per thread to 32.
+\begin{verbatim}
+gld_request     = 80 
+gst_request     = 80 
+L1_global_load_miss = 120
+instr_issued    = 11056
+instr_executed  = 10400
+registers       = 21
+occupancy       = 0.833
+\end{verbatim}
+
+\section{Transform Operations}
+\label{sec:transform-operations}
+
+We can map from a single function to an equivalent one, yet require
+less computational resources in GPU. 
+\begin{enumerate}
+\item power(x,y) with $y$ is non-integer 
+\item division
+\end{enumerate}
+
+\subsection{bigC}
+\label{sec:bigc}
+
+Here, we transform the operation,
+along with limiting the register usage
+\begin{verbatim}
+   bigC = EXP(LOG(Ca_ds_dev(ii))*dp_ca(4))
+   compPdt_dev(ii,1) = bigC 
+\end{verbatim}
+This does improve the performance significantly: the GPU time is 16-18
+(us) and the CPU overall time is 63-65 (us), rather than 70-71 (us). 
+\begin{verbatim}
+gld_request     = 80
+gst_request     = 80 
+L1_global_load_miss = 120
+instr_issued    = 7754
+instr_executed  = 7000
+registers       = 22
+occupancy       = 0.833
+\end{verbatim}
+
+
+\subsection{chiC, chiO}
+\label{sec:chic-chio}
+
+\begin{verbatim}
+   chiC = EXP(dp_ca(1)*((int_ca(2)-ryrgate_dev(ii))*dp_ca(2) + (1d0 - ryrgate_dev(ii))*dp_ca(3)))
+   chiO = EXP(dp_ca(1)*(ryrgate_dev(ii)*dp_ca(3) + (1d0 - int_ca(2) +
+ryrgate_dev(ii))*dp_ca(2)))
+
+   compPdt_dev(ii,1) = bigC + chiC + chiO
+\end{verbatim}
+
+
+Noting that 
+\begin{verbatim}
+chiC * chiO = exp(-Ej * 0.5d0 * (Ecc+Eoo)) = constant
+\end{verbatim}
+then we can compute the product in advance from the CPU and assign to
+a variable in constant memory. 
+
+However, it doesn't work in this case. Why? - it turns out that using
+long arithmetic expression will cause high pressure on registers use
+and may cause register ``spill''. 
+
+\section{Short expressions}
+\label{sec:short-expressions}
+
+A single long expression may run slow. However, multiple short
+expressions is better. Let resolve the problem in
+Sect.~\ref{sec:chic-chio} by breaking the formula into smaller ones. 
+\begin{verbatim}
+   chiC = (int_ca(2)-ryrgate_dev(ii))*dp_ca(2)
+   chiC = chiC + (1d0 - ryrgate_dev(ii))*dp_ca(3)
+   chiC = dp_ca(1)*chiC
+\end{verbatim}
+The GPU time is 18-19 (us) and CPU overall time is 64-65 (us). Other
+counters are
+\begin{verbatim}
+gld_request     = 120
+gst_request     = 80 
+L1_global_load_miss = 240
+instr_issued    = 9712
+instr_executed  = 7720
+registers       = 22
+occupancy       = 0.833
+\end{verbatim}
+
+
+If we add an additional EXP() function (session 12)
+\begin{verbatim}
+chiC = EXP(chiC)
+\end{verbatim}
+the GPU time is 21-22 (us) and the CPU overall time is 67-68
+(us). Other counters are
+\begin{verbatim}
+gld_request     = 120
+gst_request     = 80 
+L1_global_load_miss = 200
+instr_issued    = 10822
+instr_executed  = 10080
+registers       = 22
+occupancy       = 0.833
+\end{verbatim}
+As you can see, using a transcendental functions is very expensive. 
+
+\section{Division}
+\label{sec:division}
+
+Division is quite expensive, both in CC 1.x and CC 2.0. So, if
+possible, convert it to a multiplication. 
+
+The accuracy of FP division varies depending on the Compute Capability
+of the device and whether the code is compiled with
+\verb!-prec-div=false! or \verb!-prec-div=true! (precision division).
+For single-precision:
+\begin{enumerate}
+\item \verb!__fdividef(x,y)! provide faster division that division
+  operator (/)
+
+\item Both CC 1.x, and CC 2.0, division operator (/) and
+  \verb!__fdividef(x,y)! have the same accuracy when compiled with
+  \verb!-prec-div=false!; but for $2^{126}<y<2^{128}$,
+  \verb!__fdividef(x,y)! return zero while ``/'' return the correct
+  result. Also with $y$ in that range, if $x$ is infinity,
+  \verb!__fdividef(x,y)! deliver a NaN, while ``/'' return infinity
+  (INF). 
+
+\item For CC 2.0, when the code is compiled with
+  \verb!-prec-div=true!, the operator ``/'' is IEEE-compliant
+\end{enumerate}
+
+
+\subsection{phi\_chiO}
+\label{sec:phi_chio}
+
+There is no problem with this
+\begin{verbatim}
+   phi_chiO = dp_ca(5)*Ca_jsr_dev(ii) + dp_ca(6)
+   phi_chiO = phi_chiO * dp_ca(7)
+\end{verbatim}
+but after you add this statement
+\begin{verbatim}
+   phi_chiO = phi_chiO / chiC 
+\end{verbatim}
+it causes registers ``spill'', as the division operations requires
+about 12 registers. 
+
+Again, it's better to keep using a single EXP(); even though we do
+more MUL/ADD arithmetic operations.
+\begin{verbatim}
+chiO = ryrgate_dev(ii)*dp_ca(3)
+chiO = chiO - (int_ca(2)-ryrgate_dev(ii)- 1d0)*dp_ca(2)
+chiO = dp_ca(1)*chiO
+chiO = EXP(chiO)
+phi = dp_ca(5)*Ca_jsr_dev(ii) + dp_ca(6)
+
+compPdt_dev(ii,1) = bigC + chiC + chiO
+\end{verbatim}
+with GPU time is 25-26 (us), and CPU overall time is 71-72 (us). Other
+counters are
+\begin{verbatim}
+gld_request     = 120
+gst_request     = 80 
+L1_global_load_miss = 200
+instr_issued    = 13522
+instr_executed  = 12840
+registers       = 22
+occupancy       = 0.833
+\end{verbatim}
+
+
+\section{Array orientation and loop unroll}
+\label{sec:array-orient-loop}
+
+It's important that arrays are organized in such a way that at each
+row is given to each thread. It means that at a single time point, all
+threads will process data at the same columns, so if all threads in
+the same warp read continuous memory address, we only need a single
+memory read operation as each time 64-byte of data is read. Also, it
+can improve the likelihood that data are cached.
+
+Another point is that it's better to  avoid using loop inside the
+kernel. If you won't ever change the model, e.g. only 2-state RyR,
+then you try to write your code based on this model explicitly, and
+write a new one if you intend to change the model's topology. 
+\begin{verbatim}
+dtmp = bigC_phi_chiO * compKp_dev(1, ct)
+compPdt_dev(ii, 1) = dtmp + chiC * compKm_dev(1, ct)
+indexPdt_dev(ii, 1) = ct
+compPdt_dev(ii, 2) = bigC_phi_chiO * compKp_dev(2, ct)
+indexPdt_dev(ii, 2) = indexKp_dev(2, ct)
+compPdt_dev(ii, 3) = chiC * compKm_dev(2, ct)
+indexPdt_dev(ii, 3)= indexKm_dev(2, ct)
+\end{verbatim}
+with GPU time is 27-28 (us), and CPU overall time is 88-90 (us). The
+counters are
+\begin{verbatim}
+gld_request     = 480
+gst_request     = 288
+L1_global_load_hit  = 476
+L1_global_load_miss = 340
+instr_issued    = 19722
+instr_executed  = 19000
+registers       = 21
+occupancy       = 0.833
+\end{verbatim}
+
+NOTE: As CUDA is SIMT mechanism, it's better not to use vectoring
+operations in the kernel as it's not effective. 
+\begin{verbatim}
+myArr(1:3) = chiC * thisArr(1:3)
+\end{verbatim}
+
+
+\section{Code overlap}
+\label{sec:code-overlap}
+
+As kernels are called asynchronous by default, try to overlap the host
+code and kernel code as much as possible to reduce the running time.
+
+Original, we put the barrier right after the kernel call
+\begin{lstlisting}
+CALL  updateSystem_2state<<<NSFU/blocksize, blocksize>>> &
+    (X_dev((middle-1)*noutincr*NSFU+ NSFU*(iinner-1)+1:(middle-1)*noutincr*NSFU+NSFU*iinner), &
+    dt, invdt, Ca_nsr, Ca_myo)
+cuErr = cudaThreadSynchronize()
+
+  host code independent from kernel result
+\end{lstlisting}
+to 
+\begin{lstlisting}
+CALL  updateSystem_2state<<<NSFU/blocksize, blocksize>>> &
+    (X_dev((middle-1)*noutincr*NSFU+ NSFU*(iinner-1)+1:(middle-1)*noutincr*NSFU+NSFU*iinner), &
+    dt, invdt, Ca_nsr, Ca_myo)
+
+
+ ...  host code independent from kernel result
+
+cuErr = cudaThreadSynchronize()
+
+  ... host code depend upon kernel result
+\end{lstlisting}
+
+\section{updateSystem}
+\label{sec:updatesystem}
+
+In this kernel, we apply the previous techniques
+\begin{enumerate}
+\item use register, i.e. \verb!compP_dev! is removed and we use
+  \verb!compP! as scalar.
+\item we don't need to use temporary variables for global memory data,
+  as in Fermi, cache mechanism has resolved this. 
+
+\item reduce number of division operators, and try to use
+  multiplication instead. 
+\item break long arithmetic expressions into shorter ones. 
+\end{enumerate}
+with GPU time is 30-31 (us) and CPU overall time is 76-78 (us). 
+
+% \section{Synchronization}
+% \label{sec:synchronization-2}
+
+
+\section{Modulo operation}
+\label{sec:modulo-operation}
+
+
+Modulo operation (\% in C, MODULO() in Fortran) is very slow. 
+
+
+\section{Ancillary instructions - loop unrolling}
+\label{sec:ancill-instr-loop}
+
+
+{\bf Ancillary instructions} are those that don't load/store or do
+arithmetic operations. They can be IF statement, DO loop,
+\verb!syncthreads()!. These functions have high latency, and thus
+should be avoided if possible. 
+
+
+One of the is the DO loop. If we know how many iterations, we'd better
+convert them to separate instructions. 
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

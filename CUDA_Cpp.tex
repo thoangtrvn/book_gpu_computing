@@ -1,0 +1,1440 @@
+\chapter{CUDA C++}
+\label{chap:CUDA_C++}
+
+\section{C++ support}
+\label{sec:c++-support}
+
+Remember that CUDA C is an extention to the C language, with some additional
+access specifiers (Sect.\ref{sec:kernels}). CUDA host code has been compiled as
+C++ code (i.e. \verb!-ccbin=g++!) since version 2.
+
+Since Fermi architecture, CUDA supports full C++, with class and other
+object-oriented features (e.g. template). C++ 11 features supported in host and
+device code since CUDA 7.
+\begin{itemize}
+  \item  \verb!auto! keyword inside CUDA kernel
+  \item \verb!template! for CUDA kernel - Sect.\ref{sec:template-CUDA-kernel}
+  
+  \item memory management
+  
+  \item using lambdas inside CUDA kernel
+  
+  \item range-based for loops inside CUDA kernel
+\end{itemize}
+
+It means that we can allocate an array of objects on GPU memory who are instance
+of a C++ class.
+\begin{enumerate}
+  
+  \item  In order to evoke the method of an object from a CUDA \verb!__global__!
+  kernel (and of course from also host-side), the method
+needs to be defined with both
+\begin{verbatim}
+__host__  __device__ 
+\end{verbatim}
+declspecs (declaration specifiers). Also, we need to use that for 
+the constructor and destructor if you plan to use new/delete on the device
+
+NOTE: Use the above for the constructor and destructor as well, if we want to
+use  \verb!new!/\verb!delete! operator on that C++ class to dynamically create
+an object within CUDA kernel (\verb!__global__! or \verb!__device__!). This feature requires
+CUDA 4.0 and a compute capability 2.0 or higher  GPU).
+
+  \item Programmers can use C++ virtual functions, function pointers, dynamic object
+allocation, try/catch statements (which handle exceptions), and make system
+calls, such as stdio.h (the standard input/output channel). NVIDIA provides a
+CUDA C/C++ compiler, but any third-party tool vendor can target the CUDA
+architecture.
+
+  
+  \item Compiling the header file + source file using \verb!nvcc! compiler.
+  
+  The reason for this is that only the CUDA compiler knows \verb!__device__! and
+  \verb!__host__! -- your host C++ compiler will raise an error.
+\end{enumerate}
+
+\begin{mdframed}
+
+Fermi expands the memory-addressing range from 32 bits (maximum
+4GB of memory) to 40 bits (maximum 1TB of memory).
+
+``{\it A key factor in bringing C++ to CUDA is Fermi's new unified virtual
+  memory addressing (UVA - Sect.\ref{sec:UVA}). 
+  
+  Previous CUDA architectures use direct memory addresses and thus allocated
+  different memory regions for local memory, shared memory, and global memory.
+  The fragmented memory map required different load/store instructions for each
+  region and prevented NVIDIA from fully implementing pointers in C and C++. 
+  
+  In particular, C++ relies heavily on memory pointers, because every object in
+  this object-oriented language requires at least one pointer.  A typical
+  program creates hundreds of objects.
+  The Fermi architecture fixes those problems by unifying everything in a single
+  memory space} ''
+
+
+Besides bringing C++ to CUDA, the Fermi architecture with PTX 2.0 makes it
+easier to use other high level programming languages and compilers. Fermi
+supports FORTRAN  ``a vital language for scientific and engineering applications
+'' as well as Java (via native methods) and Python. Many financial programs are
+written in Java, and Python is popular for rapid application development. PTX
+2.0 also adds features for OpenCL (Sect.\ref{sec:OpenCL}) and DirectCompute
+(Sect.\ref{chap:DirectCompute}), such as new bit-reverse and append
+instructions.
+\end{mdframed}
+
+\verb!__CUDACC__! macro - Sect.\ref{sec:__CUDACC__-macro}
+\begin{verbatim}
+#ifdef __CUDACC__
+#define CUDA_CALLABLE_MEMBER __host__ __device__
+#else
+#define CUDA_CALLABLE_MEMBER
+#endif 
+
+
+class Foo {
+public:
+    CUDA_CALLABLE_MEMBER Foo() {}
+    CUDA_CALLABLE_MEMBER ~Foo() {}
+    CUDA_CALLABLE_MEMBER void aMethod() {}
+};
+\end{verbatim}
+
+
+
+
+\subsection{\_\_CUDA\_ARCH\_\_ macro}
+\label{sec:__CUDA_ARCH__}
+
+The architecture identification macro \verb!__CUDA_ARCH__! is assigned a
+three-digit value string \verb!xy0! (ending in a literal 0) during each nvcc
+compilation stage 1 that compiles for \verb!arch=compute_xy!.
+
+WHEN TO USE?  can be used in the implementation of GPU functions for determining
+the virtual architecture for which it is currently being compiled.
+
+
+WHEN NOT TO USE? 
+\begin{enumerate}
+  \item do not use the macro inside the body of \verb!__global__! functions/function templates.
+  
+  \item if it is used to control the instantiate of a \verb!__global__! function template
+  
+  \item do not use to select the type of \verb!__device__! and \verb!__constant__! variables
+  
+\begin{lstlisting}
+#if !defined(__CUDA_ARCH__)
+typedef int mytype;
+#else
+typedef double mytype;
+#endif
+
+__device__ mytype xxx;         // error: xxx's type depends on __CUDA_ARCH__
+__global__ void foo(mytype in, // error: foo's type depends on __CUDA_ARCH__
+                    mytype *ptr)
+{
+  *ptr = in;
+}
+\end{lstlisting}  
+
+  \item do not use with textures and surfaces data
+
+    
+  \item  must not be used in headers if different objects could contain different behavior.
+  
+  Example: If the macro is used in the header file, 
+\begin{lstlisting}
+// header-file
+template<typename T>
+__device__ T* getptr(void)
+{
+#if __CUDA_ARCH__ == 500
+  return NULL; /* no address */
+#else
+  __shared__ T arr[256];
+  return arr;
+#endif
+}
+\end{lstlisting} 
+  and the header file is
+  included by different source files, and these source files are compiled into a different compute arch.
+\begin{verbatim}
+
+
+nvcc --gpu-architecture=compute_50 --device-c a.cu
+nvcc --gpu-architecture=compute_52 --device-c b.cu
+nvcc --gpu-architecture=sm_52 a.o b.o
+\end{verbatim}
+  If a weak function or template function is defined in a header and its
+  behavior depends on \verb!__CUDA_ARCH__!, then the instances of that function in the
+  objects could conflict if the objects are compiled for different compute arch.
+  
+  IMPORTANT: If use, it must be guaranteed that all objects will compile for the
+  same \verb!compute_arch!.
+  
+  
+  
+  \item The host code (the non-GPU code) must not depend on it.
+\end{enumerate}
+
+\subsection{\_\_global\_\_ method?}
+
+CUDA does NOT allow defining a \verb!__global__! method of a class, regardless if the method is static or not.
+
+So, to define a \verb!__global__! method, it has to be a global scope method, outside any class definition.
+
+\subsection{\_\_device\_\_ method}
+
+CUDA allows defining a method as \verb!__device__!, optionally with
+\verb!__host__! (so that the method can be used on host-side or gpu-side).
+
+IMPORTANT: If a \verb!__device__! method is a \verb!virtual! function, then its
+virtual table is only available on GPU; and thus it cannot be used on host-side,
+even if we use \verb!__host__! specifier. Because of this limitation, a virtual
+\verb!__device__! \verb!__host__! function can only be used on device-side.
+
+
+\subsection{Features on C++ extension that cannot be used on device code}
+
+
+We cannot use on device code the following
+\begin{verbatim}
+__int128 and _Complex types
+\end{verbatim}
+
+LIMITATION: in host code on 64-bit x86 Linux platforms.
+\begin{verbatim}
+__float128
+\end{verbatim}
+
+\subsection{Where to use \_\_device\_\_, \_\_shared\_\_, \_\_managed\_\_ and \_\_constant\_\_ }
+
+\begin{verbatim}
+__device__, __shared__, __managed__ and __constant__ 
+\end{verbatim}
+cannot be used
+\begin{enumerate}
+  \item  class, struct, and union data members,
+  
+  \item formal parameter
+  
+\begin{verbatim}
+ // this is a formal parameter
+... some_function(__device__ int a)  //error
+{
+}
+\end{verbatim}  
+
+  \item non-extern variable declarations within a function that executes on the host.
+  
+  \item on variable declarations that are neither extern nor static within a function that executes on the device. 
+  
+  \item variable definition cannot have a class type with a non-empty constructor or a non-empty destructor
+\end{enumerate}
+
+
+\subsection{NO exception handling in device code}
+
+Exception handling is only supported in host code, but not in device code.
+
+Exception specification is not supported for \verb!__global__! functions.
+
+\subsection{template CUDA kernel}
+\label{sec:template-CUDA-kernel}
+
+Instead of writing two different kernels
+\begin{verbatim}
+__global__ void saxpy(float alpha, float* x, float* y, size_t n){
+ auto i = blockDim.x * blockIdx.x + threadIdx.x;
+ if(i < n){
+ y[i] = a * x[i] + y[i];
+ }
+}
+
+__global__ void daxpy(double alpha, double* x, double* y, size_t n){
+ auto i = blockDim.x * blockIdx.x + threadIdx.x;
+ if(i < n){
+ y[i] = a * x[i] + y[i];
+ }
+}
+\end{verbatim}
+
+Since CUDA 7.0, we can write
+\begin{verbatim}
+template <typename T>
+__global__ void axpy(T alpha, T* x, T* y, size_t n){
+ auto i = blockDim.x * blockIdx.x + threadIdx.x;
+ if(i < n){
+ y[i] = a * x[i] + y[i];
+ }
+}
+\end{verbatim}
+
+\section{Writing class in CUDA}
+
+IMPORTANT: The method, if using both \verb!__device__! and \verb!__host__!,
+must be defined in the same file with the class declaration, i.e. using a single
+\verb!.h! file (or .cu file).
+
+
+Any method that must be called from device code should be defined with both
+\verb!__device__! and \verb!__host__! declspecs, including the constructor and
+destructor if you plan to use new/delete on the device (Using \verb!new/delete!
+requires CUDA 4.0+ and device with compute capability 2.0+).
+
+A good strategy is to define a macro
+\begin{verbatim}
+#ifdef __CUDACC__
+#define CUDA_CALLABLE_MEMBER __host__ __device__
+#else
+#define CUDA_CALLABLE_MEMBER
+#endif 
+\end{verbatim}
+
+and use the macros on your member functions that you want to expose to the
+kernel
+\begin{verbatim}
+class Foo {
+public:
+    CUDA_CALLABLE_MEMBER Foo() {}
+    CUDA_CALLABLE_MEMBER ~Foo() {}
+    CUDA_CALLABLE_MEMBER void aMethod() {}
+};
+\end{verbatim}
+
+\url{http://stackoverflow.com/questions/6978643/cuda-and-classes}
+
+\subsection{-- Before Unified Memory: explicit copy individual data elements}
+
+\begin{verbatim}
+struct dataElem {
+ int prop1;
+ int prop2;
+ char *text;
+};
+\end{verbatim}
+We need two copies
+\begin{verbatim}
+CPU
+  {
+  int prop1;
+  int prop2;
+  char* text; //point to a location on CPU 
+      //this location hold the text say, "Hellow World"
+  }
+  
+GPU
+  {
+  int prop1;
+  int prop2;
+  char* text; //point to a location on GPU
+  }
+\end{verbatim}
+When doing copy, we need to do 2 copies
+\begin{itemize}
+  \item copy individual data elements
+  
+  \item copy the memory region referenced by \verb!*text!
+\end{itemize}
+\begin{verbatim}
+ dataElem *elem; //data on HOST (CPU-side)
+
+ dataElem *g_elem;
+ char *g_text;
+ int textlen = strlen(elem->text);
+ 
+// Allocate storage for struct and text
+ cudaMalloc(&g_elem, sizeof(dataElem));
+ cudaMalloc(&g_text, textlen);
+ 
+
+cudaMemcpy(g_elem, elem, sizeof(dataElem));
+cudaMemcpy(g_text, elem->text, textlen);
+ //copy the address of text on GPU to the data element
+ // of the object on GPU
+cudaMemcpy(&(g_elem->text), &g_text, sizeof(g_text));
+ 
+ 
+kernel<<< .., ..>>> (g_elem);
+\end{verbatim}
+
+
+\subsection{-- Since Unified Memory: class must be managed}
+
+Don't use pointer inside the data element, use object of class that is managed (see 3 steps below)
+\begin{verbatim}
+// Ideal C++ version of class
+class dataElem {
+ int prop1;
+ int prop2;
+ String text;
+};
+
+\end{verbatim}
+
+A managed class is a class whose C++ objects are always allocated on managed heap
+
+\textcolor{red}{Step 1}: write a Managed class as a base for any Unified-Memory-friendly class
+\begin{verbatim}
+class Managed {
+ void *operator new(size_t len) {
+   void *ptr;
+   cudaMallocManaged(&ptr, len);
+   return ptr;
+ }
+ void operator delete(void *ptr) {
+ cudaFree(ptr);
+ }
+};
+\end{verbatim}
+
+\textcolor{red}{Step 2}: Then make the class String being managed, and implement copy constructor
+\begin{verbatim}
+class String : public Managed {
+ int length;
+ char *data;
+ 
+ // Copy constructor using new allocates CPU-only data
+ String (const String &s) {
+ length = s.length;
+ data = new char[length+1]; //which becomes
+ /*
+   // Unified memory copy constructor allows pass-by-value
+   cudaMallocManaged(&data, length+1);
+ */
+ strcpy(data, s.data);
+ }
+};
+\end{verbatim}
+
+\textcolor{red}{CPU/GPU class sharing is restricted to POD-classes only (i.e. no
+virtual functions)}.
+
+\textcolor{red}{Step 3}: Make the class dataElem also managed
+\begin{verbatim}
+// Note “Managed” on this class, too.
+// C++ now handles our deep copies
+class dataElem : public Managed {
+ int prop1;
+ int prop2;
+ String text;
+};
+\end{verbatim}
+Copy constructors from CPU create GPU-usable objects.
+
+\textcolor{red}{Step 4}: For an array of class objects
+\begin{verbatim}
+template <class T>
+class Array : public Managed {
+ size_t n;
+ T* data;
+public:
+ Array (const Array &a) {
+   n = a.n;
+   cudaMallocManaged(&data, n);
+   memcpy(data, a.data, n);
+ }
+
+ // Also have to implement operator[], for example
+ // ...
+};
+
+
+int main(void) {
+ Array *a = new Array; //on Unified Memory an array object
+ ...
+ // pass data to kernel by reference
+ kernel_by_ref<<<1,1>>>(*a);
+ // pass data to kernel by value -- this will create a copy
+ kernel_by_val<<<1,1>>>(*a);
+}
+
+
+// Pass-by-reference version
+__global__ void kernel_by_ref(dataElem &data) { ... }
+
+// Pass-by-value version [CUDA knows how to copy]
+__global__ void kernel_by_val(dataElem data) { ... }
+
+
+\end{verbatim}
+
+
+
+
+\url{https://devtalk.nvidia.com/default/topic/1026116/cuda-programming-and-performance/copying-objects-to-device-with-virtual-functions/}
+
+\subsection{array class in CUDA Unified Memory}
+
+
+NOTE: The use of \verb!_start! and \verb!_end!. 
+
+\url{https://www.quantstart.com/articles/dev_array_A_Useful_Array_Class_for_CUDA}
+
+\url{https://stackoverflow.com/questions/10375680/using-stdvector-in-cuda-device-code}
+
+\url{https://github.com/NVIDIA-developer-blog/code-samples/blob/master/posts/unified-memory/dataElem_um_c++_2.cu}
+
+NOTE: Any typename T passed to LocalVector should be either intrinsic type (float, double, int) 
+or a user-defined class inherited from \verb!Managed! class (see definition below)
+
+\begin{lstlisting}
+template<typename T>
+class LocalVector
+{
+private:
+    T* m_begin;
+    T* m_end;
+
+    size_t capacity;
+    size_t length;
+    __device__ void expand() {
+        capacity *= 2;
+        size_t tempLength = (m_end - m_begin);
+        T* tempBegin = new T[capacity];
+
+        memcpy(tempBegin, m_begin, tempLength * sizeof(T));
+        delete[] m_begin;
+        m_begin = tempBegin;
+        m_end = m_begin + tempLength;
+        length = static_cast<size_t>(m_end - m_begin);
+    }
+public:
+    __device__  explicit LocalVector() : length(0), capacity(16) {
+        m_begin = new T[capacity];
+        m_end = m_begin;
+    }
+    __device__ T& operator[] (unsigned int index) {
+        return *(m_begin + index);//*(begin+index)
+    }
+    __device__ T* begin() {
+        return m_begin;
+    }
+    __device__ T* end() {
+        return m_end;
+    }
+    __device__ ~LocalVector()
+    {
+        delete[] m_begin;
+        m_begin = nullptr;
+    }
+
+    __device__ void add(T t) {
+
+        if ((m_end - m_begin) >= capacity) {
+            expand();
+        }
+
+        new (m_end) T(t);
+        m_end++;
+        length++;
+    }
+    __device__ T pop() {
+        T endElement = (*m_end);
+        delete m_end;
+        m_end--;
+        return endElement;
+    }
+
+    __device__ size_t getSize() {
+        return length;
+    }
+};
+\end{lstlisting}
+
+Example: Managed class
+\begin{lstlisting}
+// Managed Base Class -- inherit from this to automatically 
+// allocate objects in Unified Memory
+class Managed 
+{
+public:
+  void *operator new(size_t len) {
+    void *ptr;
+    cudaMallocManaged(&ptr, len);
+    cudaDeviceSynchronize();
+    return ptr;
+  }
+
+  void operator delete(void *ptr) {
+    cudaDeviceSynchronize();
+    cudaFree(ptr);
+  }
+};
+
+\end{lstlisting}
+
+\subsection{using unique\_ptr for array}
+
+\url{https://stackoverflow.com/questions/16711697/is-there-any-use-for-unique-ptr-with-array}
+
+\url{https://github.com/eyalroz/cuda-api-wrappers/blob/master/src/cuda/api/unique_ptr.hpp}
+
+\subsection{Unified Memory whose data element is a pointer (which can point to host-allocated memory?)}
+
+Suppose you have allocated some memory on host (using standard new) and trying
+to reuse them as unified memory pointer.
+\begin{verbatim}
+
+Variable* v = new LifeDataCollector; // standard ::new
+
+ShallowArray<Variable*> _variableList ; // whose internal data 'Variable** _data' 
+             // is on UM, i.e. cudaMallocManaged(&_data, sizeof(Variable*) * num_elements);
+             
+_variableList.push_back(v) ;   // can crash 
+\end{verbatim}
+
+If that is the case, I think you’ll have to copy data from the host memory to
+unified memory.
+ 
+IMPORTANT:  host memory and managed memory are totally of different kinds and
+you cannot mix up using their pointers.
+Either you can use unified/managed memory from the beginning or you can copy
+host memory to unified memory when needed. You can simply use memcpy to make the
+transfer happen.
+
+IMPORTANT: On an IBM Power9 platform, your host allocated data can still be
+accessed from device code, however there is currently no corresponding method on
+x86 platforms. \url{https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-system-allocator}
+
+
+\begin{verbatim}
+cudaMallocManaged(&new_pointer, size); memcpy(new_pointer, old_pointer, size); free(old_pointer);
+
+\end{verbatim}
+\url{https://stackoverflow.com/questions/51750543/cudamallocmanaged-for-host-initiated-variable}
+
+
+\url{https://www.quora.com/In-CUDA-how-can-a-host-pointer-be-added-to-Unified-Memory-Management-similar-to-using-cudaMallocManaged-but-using-host-array}
+
+
+\subsection{smart pointer in CUDA}
+
+Sect.\ref{sec:smart_pointer}
+
+
+\url{https://ernestyalumni.wordpress.com/2017/09/28/bringing-cuda-into-the-year-2011-c11-smart-pointers-with-cuda-cub-nccl-streams-and-cuda-unified-memory-management-with-cub-and-cublas/}
+
+
+\subsection{tree structure on Unified Memory}
+\label{sec:UM_number-of-cudaMallocManaged-call}
+
+
+I'm trying to build a tree structure that I want to use in a Cuda kernel. For
+that I allocate memory with cudaMallocManaged() so that Cuda copies the
+structure to the GPU when needed. But no matter the size of the structure, I get
+an "out of memory" error at a maximum number of calls
+
+Te key to understanding this is the number of allocations, at the failure point,
+rather than their size. 65451 is suspiciously close to 65535 (i.e. 2^16).
+There is some sort of accidental or deliberate limit on the total number of
+memory managed memory allocations to 65535.
+
+\begin{itemize}
+  \item GeForce GTX 980 with Cuda 7.5 on a Ubuntu 14.04 desktop.
+
+about the 65407th memory allocation, even though plenty of memory space is still
+available on both CPU and GPU memory.
+\url{https://stackoverflow.com/questions/38078737/cudamallocmanaged-returns-out-of-memory-despite-enough-free-space?noredirect=1&lq=1}
+
+The overall dynamic allocation limit for this is approximately 65535.
+\url{https://devtalk.nvidia.com/default/topic/950272/cudamallocmanaged-can-not-exceed-more-than-65410-iterartions-/}
+  
+  \item The behavior appears to be different in CUDA 8RC (possibly fixed)
+  
+  on a CUDA 8.0RC system, CentOS7, Tesla K20X (6GB). It appeared to run successfully through 1000000 iterations/allocations. The final printout line: 1716.62MB/ 5700.38MB (Free/ Total), #Nodes: 999999
+  
+  \item 
+\end{itemize}
+
+\begin{lstlisting}
+#include <stdio.h>
+#include <cuda_runtime.h>
+
+typedef struct Tree {
+    u_int64_t       foo;
+    struct Tree     *left_child;
+    struct Tree     *right_child;
+} Tree;
+
+void printMemInfo(size_t counter) {
+  size_t freemem;
+  size_t totalmem;
+  cudaMemGetInfo(&freemem, &totalmem);
+  printf("%4.2fMB/ %4.2fMB (Free/ Total), #Nodes: %lu\n",
+    freemem / (1024 * 1024.0),
+    totalmem / (1024 * 1024.0),
+    counter);
+}
+
+int main (int argc, char *argv[]) {
+  cudaSetDevice(0);
+  size_t numnodes = 1000000;
+  Tree *node[numnodes];
+
+  for(size_t i = 0; i < numnodes; i++) {
+    printMemInfo(i);
+    cudaError_t error = cudaMallocManaged( (void **) &node[i], sizeof(Tree) );
+    printCudaError(error);
+  }
+
+  cudaDeviceReset();
+  return 0;
+}
+\end{lstlisting}
+
+\textcolor{red}{Example 02}:
+an array of type Bucket,which has a nested array ObjBox
+
+There are totally N(70000) Bucket in the array, M(1000) ObjBox in each Bucket.
+\url{https://stackoverflow.com/questions/34850411/allocate-unified-memory-in-my-program-aftering-running-it-throws-cuda-errorou}
+\begin{lstlisting}
+#define N 70000
+#define M 1000
+
+class ObjBox
+{public:
+
+    int oid; float x; float y; float ts
+};
+
+class Bucket
+{public:
+
+    int bid; int nxt; 
+    ObjBox *arr_obj; 
+    int nO;
+}
+
+int main()
+{
+
+   Bucket *arr_bkt;
+
+   cudaMallocManaged(&arr_bkt, N * sizeof(Bucket));
+
+   for (int i = 0; i < N; i++)
+
+   {
+
+       arr_bkt[i].bid = i; 
+
+       arr_bkt[i].nxt = -1;
+
+       arr_bkt[i].nO = 0;
+
+       cudaError_t r = cudaMallocManaged(&(arr_bkt[i].arr_obj), M * sizeof(ObjBox));
+
+       if (r != cudaSuccess)
+
+       {
+           printf("CUDA Error on %s\n", cudaGetErrorString(r));
+           exit(0);
+       }
+
+       for (int j = 0; j < M; j++)
+
+       {
+
+           arr_bkt[i].arr_obj[j].oid = -1;
+
+           arr_bkt[i].arr_obj[j].x = -1;
+
+           arr_bkt[i].arr_obj[j].y = -1;
+
+           arr_bkt[i].arr_obj[j].ts = -1;
+
+        }
+
+   }
+
+   cout << "Bucket Array Initial Completed..." << endl;
+
+   cudaFree(arr_bkt);
+
+   return 0;
+
+}
+\end{lstlisting}
+
+\subsection{queue}
+
+Compile
+\begin{verbatim}
+nvcc -std=c++11 offsetof_error.cpp -o app -Xcudafe "--diag_suppress=1427"
+
+// to get various error/warning ID
+cudafe --display_error_number
+\end{verbatim}
+
+\begin{lstlisting}
+#include <iostream>
+#include <typeinfo>
+#include <type_traits>
+#include <cstddef>
+
+using namespace std;
+
+template <typename T> struct queue_t
+{
+    T *head;
+    T *tail;
+};
+
+struct data
+{
+    int foo;
+};
+
+template<typename T> class myclass
+{
+    static_assert(std::is_pod<T>::value,            "Queue Payload must be POD!");
+    static_assert(std::is_pod< queue_t<T> >::value, "Queue Payload must be POD!");
+
+public:
+    myclass()
+    {
+        cout << typeid(T).name() << " is pod? " << is_pod< queue_t<T> >::value << endl;
+        cout << "Offset of head is: " << offsetof(queue_t<T>, head) << endl;
+    }
+};
+
+int main()
+{
+    myclass<data> test;
+    return 0;
+}
+\end{lstlisting}
+\url{https://devtalk.nvidia.com/default/topic/856171/unnecessary-compiler-warning-with-nvcc-/}
+
+
+\subsection{Class Template}
+
+\url{http://pleiades.ucsc.edu/doc/cuda/6.0/cuda-samples/index.html}
+
+\subsection{Virtual Base Class}
+
+This (Sect.\ref{sec:virtual_base_class-C++}) is supported since CUDA 4.0, Fermi
+Card (Sect.\ref{sec:CUDA_4.0}).
+
+
+\subsection{Pure virtual function in CUDA}
+
+Pure virtual functions (Sect.\ref{sec:OO_pure-virtual-function}) is now
+supported on CUDA 4.0 and fermi card (Sect.\ref{sec:CUDA_4.0}).
+
+
+When a function in a derived class overrides a virtual function in a base class,
+the execution space specifiers (i.e., \verb!__host__, __device__!) on the overridden
+and overriding functions must match.
+
+\url{https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#virtual-functions}
+
+
+\subsection{An object from a class having virtual function}
+
+
+IMPORTANT: If creating these objects on the host and copying them to the device
+\begin{verbatim}
+"It is not allowed to pass as an argument 
+   to a __global__ function an object of a class with virtual functions. "
+
+
+The reason is that if you instantiate the object on the host, then the virtual
+function table gets populated with host pointers. When you copy this object to
+the device, these host-pointers become meaningless.
+
+\end{verbatim}
+
+SOLUTION: all of my virtual code to run only on the device and made an
+initialization kernel and then everything worked.
+
+EXPLAIN: If you create the objects on the device (you can still configure and
+populate the objects with data passed from the host) then virtual functions (and
+polymorphism) should not be a problem.
+\url{https://devtalk.nvidia.com/default/topic/825046/can-cuda-properly-handle-pure-virtual-classes-/?offset=4}
+
+REFERENCE: \url{https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#virtual-functions}
+
+
+\subsection{Complex structure whose data element is a pointer}
+\label{sec:complex-datastructure-data-element-is-pointer}
+
+
+Consider you have data structure
+\begin{verbatim}
+
+struct dataElem
+{
+   int prop1;
+   int prop2;
+   char* name;
+
+}
+\end{verbatim}
+
+Now, to use this in CPU and then copy to GPU, we need deep-copies. Here, we need two copies.
+
+To use this structure on the device, we have to copy the struct itself with its
+data members, and then copy all data that the struct points to, and then update
+all the pointers in copy of the struct.
+
+\begin{lstlisting}
+
+void launch(dataElem *elem) {
+  dataElem *d_elem;
+ 
+  char *d_name;
+
+  int namelen = strlen(elem->name) + 1;
+
+  // Allocate storage for struct and 
+  //   storage to be pointed by the data member as pointer, i.e. name
+  cudaMalloc(&d_elem, sizeof(dataElem));
+  cudaMalloc(&d_name, namelen);
+
+  // Copy up each piece separately, including new “name” pointer value
+  
+  // first copy for structure
+  cudaMemcpy(d_elem, elem, sizeof(dataElem), cudaMemcpyHostToDevice);
+  
+  // second copy for the internal data as pointer
+  // (we may need more if there is more pointer data memebers)
+  cudaMemcpy(d_name, elem->name, namelen, cudaMemcpyHostToDevice);
+  
+  // finally, making d_elem->name point to 
+  cudaMemcpy(&(d_elem->name), &d_name, sizeof(char*), cudaMemcpyHostToDevice);
+
+  // Finally we can launch our kernel, but CPU & GPU use different copies of “elem”
+  Kernel<<< ... >>>(d_elem);
+}
+\end{lstlisting}
+
+
+With Unified Memory (Sect.\ref{sec:Unified-Memory-CUDA6.0}), the shallow copies
+(or deep copies) is managed automatically. Allocating our dataElem structure in
+Unified Memory eliminates all the excess setup code, leaving us with just the
+kernel launch, which operates on the same pointer as the host code. That’s a big
+improvement!
+
+HOW? We introduce a Managed basedclass (Sect.\ref{sec:UnifiedMemory-Managed-baseclass})
+\begin{lstlisting}
+// Note “managed” on this class, too.
+// C++ now handles our deep copies
+class dataElem : public Managed {
+public:
+  int prop1;
+  int prop2;
+  String name;  // NOTE we don't use pointer
+};
+
+// Deriving from “Managed” allows pass-by-reference
+class String : public Managed {
+  int length;
+  char *data;
+
+public:
+  // Unified memory copy constructor allows pass-by-value
+  String (const String &s) {
+    length = s.length;
+    cudaMallocManaged(&data, length);
+    memcpy(data, s.data, length);
+  }
+
+  // ...
+};
+\end{lstlisting}
+
+\begin{verbatim}
+dataElem* elem;
+
+cudaMallocManaged( &elem, sizeof(dataElem), );
+
+void launch(dataElem *elem) {
+  kernel<<< ... >>>(elem);
+  cudaDeviceSynchronize();
+  
+}
+\end{verbatim}
+
+\url{https://devblogs.nvidia.com/unified-memory-in-cuda-6/}
+
+\subsection{CPU/GPU shared linked list}
+
+Linked lists are a very common data structure, but because they are essentially
+nested data structures made up of pointers, passing them between memory spaces
+is very complex.
+\begin{lstlisting}
+struct dataElem{
+   int internal_data;
+
+   dataElem* next;
+}
+
+
+dataElem*  linked_list;
+\end{lstlisting}
+
+Without Unified Memory, sharing a linked list between the CPU and the GPU is
+unmanageable.
+Before Unified Memory, the only option is to allocate the list in Zero-Copy
+memory (pinned host memory), which means that GPU accesses are limited to
+PCI-express performance.
+
+By allocating linked list data in Unified Memory, device code can follow
+pointers normally on the GPU with the full performance of device memory. The
+program can maintain a single linked list, and list elements can be added and
+removed from either the host or the device.
+ 
+\begin{lstlisting}
+// Note “managed” on this class, too.
+// C++ now handles our deep copies
+class dataElem : public Managed {
+public:
+  int prop1;
+  int prop2;
+  String name;
+};
+\end{lstlisting}
+ 
+\subsection{Deep copy (copy constructor) with Unified Memory using a Managed base-class}
+\label{sec:UnifiedMemory-Managed-baseclass}
+
+C++ simplifies the deep copy problem by using classes with copy constructors
+(Sect.\ref{sec:copy-constructor}).
+A copy constructor is a function that knows how to create an object of a class,
+allocate space for its members, and copy their values from another object.
+
+C++ also allows the \verb!new! and \verb!delete! memory management operators to be overloaded.
+ 
+We can create a base class, which we’ll call {\it Managed}, which uses
+cudaMallocManaged() inside the overloaded new operator, as in the following
+code.
+
+\begin{lstlisting}
+
+class Managed {
+public:
+  void *operator new(size_t len) {
+    void *ptr;
+    cudaMallocManaged(&ptr, len);
+    cudaDeviceSynchronize();
+    return ptr;
+  }
+
+  void operator delete(void *ptr) {
+    cudaDeviceSynchronize();
+    cudaFree(ptr);
+  }
+};
+\end{lstlisting}
+
+Now, we have our class inherit from this class
+
+\begin{lstlisting}
+// Deriving from “Managed” allows pass-by-reference
+class String : public Managed {
+  int length;
+  char *data;
+
+public:
+  // Unified memory copy constructor allows pass-by-value
+  String (const String &s) {
+    length = s.length;
+    cudaMallocManaged(&data, length);
+    memcpy(data, s.data, length);
+  }
+
+  // ...
+};
+\end{lstlisting}
+ 
+
+\subsection{Thrust with managed memory}
+\label{sec:thrust-managed-memory}
+
+\begin{lstlisting}
+#include <iostream>
+#include <cmath>
+#include <thrust/reduce.h>
+#include <thrust/system/cuda/execution_policy.h>
+#include <thrust/system/omp/execution_policy.h>
+ 
+const int ARRAY_SIZE = 1000;
+ 
+int main(int argc, char **argv) {
+    double* mA;
+    cudaMallocManaged(&mA, ARRAY_SIZE * sizeof(double));
+    
+    thrust::sequence(mA, mA + ARRAY_SIZE, 1);
+    
+    double maximumGPU = thrust::reduce(thrust::cuda::par, mA, mA + ARRAY_SIZE, 0.0,      
+                                     thrust::maximum<double>());
+    cudaDeviceSynchronize();
+    double maximumCPU = thrust::reduce(thrust::omp::par, mA, mA + ARRAY_SIZE, 0.0,    
+                                       thrust::maximum<double>());
+    std::cout << "GPU reduce: “ << (std::fabs(maximumGPU ‐ ARRAY_SIZE) < 1e‐10 ? "Passed" : "Failed");  
+    std::cout << "CPU reduce: “ << (std::fabs(maximumCPU ‐ ARRAY_SIZE) < 1e‐10 ? "Passed" : "Failed"); 
+    cudaFree(mA);
+    return 0;
+}
+\end{lstlisting}
+
+Note that using Thrust with managed memory requires the latest development
+version Thrust v1.8 (the CUDA Toolkit only provides Thrust v1.7).
+
+
+\url{http://www.drdobbs.com/parallel/unified-memory-in-cuda-6-a-brief-overvie/240169095?pgno=2}
+
+\subsection{Sparse linear matrix}
+
+SPIKE::GPU, a library for the GPU solution of mid-size sparse linear systems, and use it to assess the performance of managed memory in CUDA 6.
+
+
+SPIKE::GPU is an open source sparse linear solver for systems of medium size;
+that is, up to approximately 0.5 million unknowns. The solution strategy has
+three steps. In step 1, a sparse matrix is reordered; that is, entries in A are
+moved around by shifting the order of the rows and columns in the matrix to
+accomplish two things (Figure 3):
+
+\url{http://www.drdobbs.com/parallel/unified-memory-in-cuda-6-a-brief-overvie/240169095?pgno=2}
+
+\url{https://github.com/spikegpu/SaPLibrary}
+
+
+\section{Organizing CUDA C++ codes}
+
+
+Sect.\ref{sec:modules-in-C++} discuss how to organize C++ codes into compilation
+units (.cpp/.h).
+
+\textcolor{red}{Consider the CUDA C++ example}:  a \verb!particle! class and a three-dimensional
+vector class, \verb!v3!, that it uses.
+
+The class contains a number of data member, as instances of another class.
+\begin{verbatim}
+#include <v3.h>
+
+class particle
+{
+private:
+    v3 position;
+    v3 velocity;
+    v3 totalDistance;
+
+public:
+    particle();
+    __host__ __device__ void advance(float dist);
+    const v3& getTotalDistance() const;
+};
+\end{verbatim}
+
+We’ll use a CUDA C++ kernel in which each thread calls
+\verb!particle::advance()! on a particle, which inturns call other CUDA C++
+kernels, e.g. those from V3 class.
+
+\subsection{particle class}
+
+
+Sect.\ref{sec:CUDA_class} describes how to write a class that is both CPU and GPU friendly.
+
+\begin{verbatim}
+#include <particle.h>
+
+particle::particle() : position(), velocity(), totalDistance(0,0,0) {}
+
+__device__ __host__ 
+void particle::advance(float d)
+{
+    velocity.normalize();
+    float dx = d * velocity.x;
+    position.x += dx;
+    totalDistance.x += dx;
+    float dy = d * velocity.y;
+    position.y += dy;
+    totalDistance.y += dy;
+    float dz = d * velocity.z;
+    position.z += dz;
+    totalDistance.z += dz;
+    velocity.scramble();
+}
+
+const v3& particle::getTotalDistance() const
+{
+    return totalDistance; 
+}
+\end{verbatim}
+
+
+\subsection{Array of class objects}
+
+Now, we have an array of class objects which is the object-oriented way of programming. 
+
+How can we make it running on GPU?
+
+At the CompCategory level, we need to define a \verb!__global__! method to do it
+\begin{verbatim}
+#include <particle.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+__global__ 
+void advanceParticles(float dt, particle * pArray, int nParticles)
+{
+    int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    if(idx < nParticles) { pArray[idx].advance(dt); } 
+} 
+
+
+int main(int argc, char ** argv) 
+{     
+    int n = 1000000;     
+    if(argc > 1) { n = atoi(argv[1]);}     // Number of particles
+    if(argc > 2) { srand(atoi(argv[2])); } // Random seed
+
+    particle * pArray = new particle[n];
+    particle * devPArray = NULL;
+    cudaMalloc(&devPArray, n*sizeof(particle));
+    cudaMemcpy(devPArray, pArray, n*sizeof(particle), cudaMemcpyHostToDevice);
+    for(int i=0; i<100; i++)
+    {   // Random distance each step
+        float dt = (float)rand()/(float) RAND_MAX;
+        advanceParticles<<< 1 +  n/256, 256>>>(dt, devPArray, n);
+        cudaDeviceSynchronize();
+    }
+
+    cudaMemcpy(pArray, devPArray, n*sizeof(particle), cudaMemcpyDeviceToHost);
+    v3 totalDistance(0,0,0);
+    v3 temp;
+    for(int i=0; i<n; i++)
+    {
+        temp = pArray[i].getTotalDistance();
+        totalDistance.x += temp.x;
+        totalDistance.y += temp.y;
+        totalDistance.z += temp.z;
+    }
+    float avgX = totalDistance.x /(float)n;
+    float avgY = totalDistance.y /(float)n;
+    float avgZ = totalDistance.z /(float)n;
+    float avgNorm = sqrt(avgX*avgX + avgY*avgY + avgZ*avgZ);
+    printf("Moved %d particles 100 steps. Average distance traveled is |(%f, %f, %f)| = %f\n", 
+                                          n, avgX, avgY, avgZ, avgNorm);
+    return 0;
+}
+\end{verbatim}
+
+\subsection{V3 class }
+
+
+\begin{verbatim}
+class v3
+{
+public:
+    float x;
+    float y;
+    float z;
+
+    v3();
+    v3(float xIn, float yIn, float zIn);
+    void randomize();
+    __host__ __device__ void normalize();
+    __host__ __device__ void scramble();
+};
+\end{verbatim}
+
+
+\begin{verbatim}
+#include <v3.h>
+#include <math.h>
+
+v3::v3() { randomize(); }
+
+v3::v3(float xIn, float yIn, float zIn) : x(xIn), y(yIn), z(zIn) {}
+
+void v3::randomize()
+{
+    x = (float)rand() / (float)RAND_MAX;
+    y = (float)rand() / (float)RAND_MAX;
+    z = (float)rand() / (float)RAND_MAX;
+}
+
+__host__ __device__ void v3::normalize()
+{
+    float t = sqrt(x*x + y*y + z*z);
+    x /= t;
+    y /= t;
+    z /= t;
+}
+
+__host__ __device__ void v3::scramble()
+{
+    float tx = 0.317f*(x + 1.0) + y + z * x * x + y + z;
+    float ty = 0.619f*(y + 1.0) + y * y + x * y * z + y + x;
+    float tz = 0.124f*(z + 1.0) + z * y + x * y * z + y + x;
+    x = tx;
+    y = ty;
+    z = tz;
+}
+\end{verbatim}
+
+
+\subsection{C++ CUDA in CUDA 4.0}
+
+
+Before CUDA 5.0, if a programmer wanted to call particle::advance() from a CUDA
+kernel launched in main.cpp, the compiler required the main.cpp compilation unit
+to include the implementation of particle::advance() as well any subroutines it
+calls (v3::normalize() and v3::scramble() in this case).
+
+In complex C++ applications, the call chain may go deeper than the two-levels that our example illustrates.
+
+Without device object linking, the developer may need to deviate from the
+conventional application structure to accommodate this compiler requirement.
+Such changes are difficult for existing applications in which changing the
+structure is invasive and/or undesirable.
+
+
+\subsection{C++ CUDA in CUDA 5.0}
+
+
+From CUDA 5.0, the compiler can generate device code for all functions in a .cpp
+file, store it in a single .o file, and then link device code from multiple .o files
+together in the same way that we are used to linking CPU code.
+
+From existing C++ code, the only required change in v3.h, v3.cpp, particle.h,
+and particle.cpp is to add
+\begin{verbatim}
+__host__  __device__ 
+\end{verbatim}
+decorators to member functions that device code calls.
+
+The implementations are otherwise completely unchanged from their CPU-only version.
+
+
+The \verb!__host__ __device__! decorations indicate to nvcc to compile these routines into both CPU code and device-callable GPU code. 
+\begin{itemize}
+  \item   Using \verb!__host__! alone tells the compiler to generate only a CPU version of this routine
+  
+  This usage is unnecessary, as this is the default behavior. 
+  
+  \item   Using \verb!__device__! alone tells the compiler to generate only a GPU version of this routine
+
+This is useful if you know this routine will never be needed by the host, or if
+you want to implement your function using operations specific to the GPU, such
+as fast math or texture unit operations
+\end{itemize}
+
+
+If you call a \verb!__host__! function from the device or a \verb!__device__! function from the host, the compiler will report an error.
+
+
+\subsection{Building C++ CUDA-friendly code}
+
+NOTE: Instead of using \verb!g++!, we use 
+\verb!nvcc -x cu -arch=sm_20! 
+
+Example:
+\begin{verbatim}
+objects = main.o particle.o v3.o
+
+all: $(objects)
+    nvcc -arch=sm_20 $(objects) -o app
+
+%.o: %.cpp
+    nvcc -x cu -arch=sm_20 -I. -dc $< -o $@
+
+clean:
+    rm -f *.o app
+\end{verbatim}
+
+
+\subsection{MPI and CUDA code in same file}
+
+\begin{verbatim}
+nvcc -I/usr/mpi/gcc/openmpi-1.4.6/include -L/usr/mpi/gcc/openmpi-1.4.6/lib64 -lmpi \
+    spaghetti.cu -o program
+\end{verbatim}
+
+\subsection{MPI and CUDA code are in separated files}
+
+Another cleaner option is to have MPI and CUDA code separate in two files:
+main.c and multiply.cu respectively. These two files can be compiled using
+mpicc, and nvcc respectively into object files (.o) and combined into a single
+executable file using mpicc.
+
+\begin{verbatim}
+module load openmpi cuda #(optional) load modules on your node
+mpicc -c main.c -o main.o
+nvcc -arch=sm_20 -c multiply.cu -o multiply.o
+mpicc main.o multiply.o -lcudart -L/apps/CUDA/cuda-5.0/lib64/ -o program
+\end{verbatim}
+using mpicc, meaning that you have to link to your CUDA library
+
+\url{https://anhnguyen.me/2013/12/how-to-mix-mpi-and-cuda-in-a-single-program/}
+
+NOTE: request 2 processes and 2 GPUs
+\begin{verbatim}
+#PBS -l nodes=2:ppn=2:gpus=2
+mpiexec -np 2 ./program
+\end{verbatim}
+
+\section{Error: dynamic initialization not supported}
+\label{sec:constant_memory_C++}
+
+\begin{verbatim}
+error : dynamic initialization is not supported for __device__, __constant__ and
+__shared__ variables.
+\end{verbatim}
+\url{http://stackoverflow.com/questions/27041820/why-am-i-getting-dynamic-initialization-not-supported-for-device-constant}
+
+\begin{verbatim}
+#include "../Params.hpp"
+
+__constant__ Params cparams;
+
+
+template <typename T>
+class Vec2
+{
+public:
+   Vec2(){ x = 0.0; y = 0.0;}
+   T x, y;
+};
+
+typedef Vec2<float> vectorTypef;
+typedef struct Params
+{
+   vectorTypef a;
+} Params;
+\end{verbatim}
+
+A data member of the class Params is an object of \verb!Vec2! class. This
+\verb!Vec2! class has a default constructor, which assign data to the data
+members. This method of assigning data to a \verb!__constant__! region is not
+legal either in device code or host code.
+
+In other words, there are only 1 way to assign value to a constant memory,
+and cannot be done via the constructor.
+\begin{itemize}
+  \item assign in the host code, \verb!cudaMemcpyToSymbol()! for CUDA C or
+  simple assignment in CUDA Fortran.
+\end{itemize}
+I would recommend that you assign these in your host code explicitly, rather
+than via a constructor.
+
+So, one possible approach to fix this would be to change your default
+constructor to an empty one:
+\begin{verbatim}
+public:
+   __host__ __device__ Vec2(){ }; // change this line
+   T x, y;
+\end{verbatim}
+and then we use
+\begin{verbatim}
+Params hparams;
+hparams.a.x = 0.0;
+hparams.a.y = 0.0;
+cudaMemcpyToSymbol(cparams, &hparams, sizeof(Params));
+\end{verbatim}
+% \section{cuDPP}
+% \label{sec:cudpp}

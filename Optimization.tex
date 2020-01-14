@@ -1,0 +1,698 @@
+
+\chapter{Optimization}
+\label{chap:optimization}
+
+
+Normally, the very first step when you write the code is to make it
+works and produces the correct results. This process normally requires
+debugging. When the code works correctly, optimization and
+parallelization will be the next step.
+
+Optimization causes longer compiling time, yet it runs faster than
+unoptimized code. For a summary of what to do, read
+Sect.~\ref{sec:step-step}.
+
+\section{Code optimization}
+\label{sec:code-optimization}
+
+\begin{enumerate}
+\item Avoid using power form, especially power to a integer number in
+  floating form, say \verb!x**4.0!, the better way is to use
+  \verb!x*x*x*x!. 
+\item Tune the expression to have less arithmetic operations, say
+\begin{lstlisting}
+a1*x**3 + a2*x**2+a3*x + a4
+\end{lstlisting}
+  with 8 multiplies and 3 additions. A better form is
+\begin{lstlisting}
+((a1*x + a2) * x + a3) *x + a4
+\end{lstlisting}
+with 3 multiplies and 3 additions.
+
+\item Calling a subroutine or functions has a certain cost, and this
+  can be unduly large if it is called so many times. If the subroutine
+  or function is small enough (a few lines), you're recommended to
+  define it as \hyperref[sec:statement-functions]{statement function}.
+
+\item It is recommended to use variables of the same type in an
+  expression to avoid type conversion which is potentially expensive. 
+\begin{lstlisting}
+integer i, j, k
+real a, b, c
+\end{lstlisting}
+then \verb!(i*j*k)*(a*b*c)! is better than \verb!i*j*k*a*b*c!
+
+\item common expression should be avoided by using an intermediate
+  variable
+\begin{lstlisting}
+f(i) = a(i) * b(i) * c(i)
+g(i) = a(i) * b(i) * d(i)
+\end{lstlisting}
+use an intermediate variable \verb!tmp=a(i)*b(i)!.
+
+\item Pass a character string to a subprogram using
+  \verb!CHARACTER*(*)! will allow its length can be extracted using
+  LEN function. 
+
+\item For the local variable in a subprogram to be initialized only
+  once at the first call to the subprogram, i.e. the value of the
+  variable when the subprogram return will be used for the next call
+  to that subprogram, declare it with DATA attribute or statement
+\begin{verbatim}
+subroutine foofoo()
+  INTEGER :: abc
+  DATA abc/4/
+
+  write (*,*) abc
+  abc = abc + 1
+end subroutine
+
+...
+call foofoo()  ! abc = 4
+call foofoo()  ! abc = 5
+\end{verbatim}
+
+\item Invariant code should be moved out of the loops to avoid
+  repetitive computing the same expression.
+\begin{lstlisting}
+DO i=1,10
+   v = v + pi * scale(8) * z(i)
+ENDDO
+! put pi*scale(8) out of the loop
+tmp = pi * scale(8)
+DO i=1,10 
+   v = v + tmp *z(i)
+ENDDO
+\end{lstlisting}
+
+\item Divisions are slower than multiplications, thus, if a division
+  is repeated in a loop, define its reciprocal and then multiply with
+  this quantity.
+\begin{lstlisting}
+r1s = 1./s
+do i =1, 10
+  v = v + x(i) * r1s
+enddo
+\end{lstlisting}
+
+\item loop unrolling (use compiler option)
+
+\item loop fusion (combine loops of the same iteration and are
+  independent) 
+
+\item vectorization (only for x64 systems, read
+  Sect.~\ref{sec:sse-vectorization})
+\end{enumerate}
+
+\section{Optimization level of compiler}
+\label{sec:optimization-level}
+
+With PGI Fortran, you can use {\it -Olevel} flag.  The {\it -fast}
+option is equivalent to specifying {\it -O2 -Munroll -Mnoframe}.
+
+\subsection{-O0}
+\label{sec:-o0}
+
+No optimization. 
+
+\subsection{-O1}
+\label{sec:-o1}
+
+Local optimization: the code is optimized by {\it basic blocks}. Here,
+a basic block is defined as the sequence of statements in which the
+flow of control enter at the beginning and exit at the end without the
+possibility of branching, except at the end. 
+
+Here is the list of techniques for local optimization:
+\begin{enumerate}
+\item algebraic identity removal, e.g. A*1 is replaced by A; A+0 is
+  replaced by A.
+\item constant folding, i.e. replace the expression by its value if it
+  can be computed at compile time, e.g. J=1+2 is replaced by J=3
+\item common sub-expression elimination, i.e. multiple computation of
+  the same expression can be reduced to once, e.g. T=A*B+A*B+A*B is
+  replace by X=A*B, T=X1+X1+X1
+\item pipelining, 
+\item redundant load and store elimination, i.e. avoid storing and
+  loading the same value, e.g. A=B+C, A=A+2 then after the first one,
+  A is kept in the register and the stage of storing A is eliminated,
+  as the next one use directly A and it doesn't need to load A.
+\item scheduling, 
+\item strength reduction, i.e. reduce time consuming operations
+  (e.g. division) by faster ones (i.e. multiplication or shift),
+  e.g. J=I/4 is replaced by ARSHIFT(I,2)
+\item peephole optimizations.
+\end{enumerate}
+
+\subsection{-O2 or -O}
+\label{sec:-o2}
+
+This performs all local optimization and the new level global
+optimization: 
+
+\begin{enumerate}
+\item   Branch to branch elimination
+\item Constant propagation
+\item Copy propagation
+\item Dead store elimination
+\item Global register allocation
+\item Induction variable elimination
+\item Invariant code motion
+\item Scalar replacement
+\end{enumerate}
+\subsection{-Mvect}
+\label{sec:-mvect}
+
+{\bf Vectorizer} scans code searching for loops that are candidates
+for vectorization transformations such as
+\begin{itemize}
+\item inner-loop, outer-loop distribution,
+\item \hyperref[sec:loop-interchange]{loop interchange},
+\item cache tiling (memory hierarchy) optimization, and 
+\item idiom recognition (replacement of a recognizable code sequence,
+  such as a reduction loop or matrix multiplication, with optimized
+  code sequences or function calls)
+\item generate Pentium III SSE instruction and (Pentium III or Athlon)
+  (when possible) if use ``-Mvect=sse''. However, it applies only to
+  32-bit floating point data (i.e. simple precision).
+\item prefetch instructions, if use ``-Mvect=prefetch''. It can
+  improves performance on both 32-bit or 64-bit floating point
+  vectors. However, this can degrade the performance when working
+  unaligned or strided data. So, be sure to measure the performance
+  with and without ``-Mvect=prefetch''.
+\end{itemize}
+
+When the vectorizer finds vectorization opportunities, it internally
+rearranges or replaces sections of loops (the vectorizer changes the
+code generated; your source code's loops are not altered). In addition
+to performing these loop transformations, the vectorizer produces
+extensive data dependence information for use by other phases of
+compilation.  
+
+The -Mvect option can speed up code which contains {\it well-behaved}
+{\bf countable
+  loops}\footnote{the
+  number of iteration is set before the loop execution and cannot be
+  changed during the execution}
+which operate on large arrays (REAL, REAL*4, REAL*8, INTEGER*4,
+COMPLEX or COMPLEX DOUBLE).
+
+However, it is possible that some codes will show a decrease in
+performance on IA-32 systems when compiled with -Mvect due to the
+generation of conditionally executed code segments and other code
+generation factors. For this reason, it is recommended that you check
+carefully whether particular program units or loops show improved
+performance when compiled with this option enabled.
+
+How to use?
+\begin{enumerate}
+\item ``-Mvect'' is equivalent to
+  ``-Mvect=assoc,cachesize:262144''. This default may vary depending
+  on the target system.
+\item ``-Mvect=assoc'' : this option can change the result of a
+  computation due to roundoff error, i.e. the two operations are
+  mathematically equivalent yet can be computational different and
+  generate faster code. To prevent this, use ``-Mvect=noassoc''.
+\item ``-Mvect=cachesize:n'': this instruct the vectorizer to tile
+  nested loop operations assuming a data cache size of $n$
+  (bytes). This can maximize the re-use of items in such tasks like
+  matrix multiplication. 
+\item ``-Mvect=sse'': generate SSE (SIMD instructions) and prefetch
+  instructions when vectorizable loops are encountered. 
+\end{enumerate}
+
+To know why a loop is not vectorized or tiles, use ``-Mneginfo=loop''.
+
+\subsubsection{Loop interchange}
+\label{sec:loop-interchange}
+
+An interchangeable loop are perfect nested-loops, i.e. there is no
+statements between the loop control statements.
+
+Example: non-perfect
+\begin{lstlisting}
+do i=1, 10
+   x = i
+   do j = 1, 10
+   ...
+   enddo
+   y = i^2
+enddo
+\end{lstlisting}
+Example: perfect 
+\begin{lstlisting}
+do i=1, 10
+   do j = 1, 10
+   ...
+   enddo
+enddo
+\end{lstlisting}
+
+With perfect nested-loops, it is preferable to use 100 vectors of
+length 100 rather than 1000 vector of length 100. The 2 code segments
+are equivalent, yet the first one is more efficient.
+\begin{lstlisting}
+!!!(1)
+DO J = 1,100
+   DO I = 1,1000
+     X(I,J) = X(I,J) * A(I,J)
+   ENDDO
+ENDDO
+!!!(2)
+DO I = 1,1000
+   DO J = 1,100
+     X(I,J) = X(I,J) * A(I,J)
+   ENDDO
+ENDDO
+\end{lstlisting}
+
+\subsubsection{Outer-loop distribution}
+\label{sec:outer-loop-distr}
+
+More than 3 loops nested to each other, can be adjusted to improve the
+performance by increasing the number of perfect loops.
+
+
+Example: FROM
+\begin{lstlisting}
+DO I = 1,N
+     DO J = 1,N
+          C(I,J) = 0
+          DO K = 1,N
+               C(I,J) = C(I,J) + A(I,K) * B(K,J)
+          ENDDO
+     ENDDO
+ENDDO
+\end{lstlisting}
+TO
+\begin{lstlisting}
+DO I = 1,N
+     DO J = 1,N
+          C(I,J) = 0
+     ENDDO
+ENDDO
+DO I = 1,N
+     DO J = 1,N
+          DO K = 1,N
+               C(I,J) = C(I,J) + A(I,K) * B(K,J)
+          ENDDO
+     ENDDO
+ENDDO
+\end{lstlisting}
+
+\subsubsection{Inner-loop distribution}
+\label{sec:inner-loop-distr}
+
+Convert an inner most loop to more than one loop to increase the
+perfect nested-loops.
+
+\begin{lstlisting}
+DO I = 1,N
+   X = A(I) + C(I)
+   B(I+1) = B(I) * X  !! dependent here
+ENDDO
+\end{lstlisting}
+
+\begin{lstlisting}
+DO I = 1,N
+   X(I) = A(I) + C(I)
+ENDDO
+DO I = 1,N
+   B(I+1) = B(I) * X(I)
+ENDDO
+\end{lstlisting}
+
+\subsection{-Mcache\_align}
+\label{sec:-mcache_align}
+
+You can cause unconstrained data objects of size 16 bytes or greater
+to be cache-aligned by compiling with the ``-Mcache\_align'' switch. An
+unconstrained data object is a data object that is not a common block
+member and not a member of an aggregate data structure. 
+
+\subsection{-Mconcur}
+\label{sec:-mconcur}
+
+Auto-parallelization option.
+
+``-Mconcur'' option can speed up code if it contains
+{\it well-behaved} {\bf countable loops} and/or
+{\bf computationally intensive nested loops} which operate on arrays.
+It must be specified at both compiled and linking.
+A compiled program checks for NCPUS at runtime, if NCPUS=1, it run
+serially, yet use parallel routines generated during compilation. Set
+NCPUS larger than the true number of processors can produce
+inefficient execution. 
+
+
+There are several options with ``-Mconcur''
+\begin{enumerate}
+\item altcode:n
+
+  Use this if you want to compiler to generate the equivalent scalar
+  code, instead of the loop. This defines the cutoff length $n$ for
+  the loops.
+\item noaltcode
+
+  This option is opposite of the previous one. Do not generate
+  alternate scalar code. The parallelized version of the loop is
+  always executed regardless of the loop count.
+
+\item dist:block
+
+  (default) {\it Parallelize with block distribution}.
+
+\item dist:cyclic
+
+  {\it Parallelize with cyclic distribution}. The outermost
+  parallelizable loop in any loop nest is parallelized. If a
+  parallelized loop is innermost, its iterations are allocated to
+  processors cyclically. That is, processor 0 performs iterations 0,
+  3, 6, etc.; processor 1 performs iterations 1, 4, 7, etc.; and
+  processor 2 performs iterations 2, 5, 8, etc.  
+\item cncall 
+
+  Allow subroutine/function calls in parallel loops. Loops containing
+  calls are candidates for parallelization. Also, no minimum loop
+  count threshold must be satisfied before parallelization will occur,
+  and last values of scalars are assumed to be safe.
+
+\item noassoc
+
+    Disable parallelization of loops with reductions.
+\end{enumerate}
+
+However, it is possible that some codes will show a decrease
+in performance on IA-32 multi-processor systems when compiled with
+-Mconcur due to parallelization overheads, memory bandwidth
+limitations in the target system, false-sharing of cache lines, or
+other architectural or code-generation factors. For this reason, it is
+recommended that you check carefully whether particular program units
+or loops show improved performance when compiled using this option.
+
+
+To know why a loop is not parallelized, use ``-Mneginfo=concur''. If
+auto-parallelization doesn't work, try to use OpenMP.
+
+\subsection{-Munroll}
+\label{sec:-munroll}
+
+This optimization unrolls loops, executing multiple instances of the
+loop during each iteration. 
+
+Example: FROM
+\begin{lstlisting}
+REAL*4  A(100), B(100), Z
+INTEGER I
+DO I=1, 100 
+  Z = Z + A(i) * B(i)
+END DO
+END
+\end{lstlisting}
+TO
+\begin{lstlisting}
+REAL*4 A(100), B(100), Z
+INTEGER I
+DO I=1, 100, 2 
+  Z = Z + A(i) * B(i)
+  Z = Z + A(i+1) * B(i+1)
+END DO
+END
+\end{lstlisting}
+This reduces loop branching overhead (i.e. check for stop condition),
+and can improve execution speed. A loop with a constant count may be
+completely unrolled or partially unrolled. A loop with a non-constant
+count may also be unrolled.
+{\bf A candidate loop must be an innermost loop containing one to four
+  blocks of code}. To know whether a loop can be unrolled, compile the
+code with ``-Minfo'' or ``-Minfo=loop''.
+
+
+
+\subsection{-Mipa}
+\label{sec:-mipa}
+
+During the procedural call, there can be some redundancy which can be
+optimized. For example: 
+\begin{enumerate}
+\item interprocedural constant propagation
+\item argument removal
+\item pointer disambiguation
+\item alignment detection
+\item alignment propagation
+\item global variable modifcation
+\item reference detection
+\end{enumerate}
+Interprocedural analysis (IPA) can reduce the running time
+substantially. We should compile with 
+\begin{verbatim}
+-fastsse
+-fastsse -Mipa=fast
+-fastsse -Mipa=fast,inline
+\end{verbatim}
+
+\subsection{-Minline}
+\label{sec:-minline}
+
+You can tell specifically which functions, in which library should
+be/should not be inlined.
+
+\begin{verbatim}
+-Minline[=lib:<name> | <func> | except:<func> | name:<func> | 
+          size:<n> | levels:<n>]
+\end{verbatim}
+Most options are very straight forward, just notice
+\begin{itemize}
+\item  \verb!size! tell
+the maximum number of statements for a function to be inlined. 
+\item \verb!levels! tell how many 
+\end{itemize}
+
+
+There are situations when a subprogram cannot be inlined (Read the PGI
+User Guide Chapter 4). 
+
+\section{Compile to target PC}
+\label{sec:compile-target-pc}
+
+With PGI Fortran, you can compile the program to run on a specific
+architecture using \verb!-tp! option.
+\begin{verbatim}
+pgf95 -tp k8-64    ! AMD Opteron in 64-bit
+
+pgf95 -tp p7-64    ! Intel IA32/EM64T in 64-bit
+
+pgf95 -tp x64      ! generate two versions of a function
+                   ! (k8-64 and p7-64)
+
+pgf95 -tp nehalem-64    ! Nehalem in 64-bit
+
+pgf95 -tp core2-64    ! Core 2 processor in 64-bit
+
+-tp k8-64,p7-64,core2-64  ! three versions of a function
+\end{verbatim}
+
+You can also use \verb!#pragma! directive (in C/C++ code)
+\begin{verbatim}
+#pragma pgi routine tp k8-64 core2-64
+\end{verbatim}
+
+If we believe the 90-10 rule, that 90\% of the time is spent in 10\%
+of the code, then optimizing that 10\% of the code for speed and the
+rest for size should give the best of both worlds.
+
+\subsection{Multicore CPU}
+\label{sec:multicore-cpu}
+
+To utilize the multicore capability of latest CPU, some loops can be
+parallelized. 
+\begin{enumerate}
+\item \verb!-Mconcur! tell the compiler to parallelize the loops based
+  on predefined heuristic
+\item \verb!-mp! tell the compiler to use the directives (Fortran) or
+  pragmas (C/C++) and parallelize based on OpenMP 2.5
+\end{enumerate}
+The two compiler options must be used both at compile time and link
+time. To see which loops are parallelized, we can use
+\verb!-Minfo -Mneginfo!.
+
+Loops with procedural calls can be be parallelized, if possible, using
+\verb!-Mconcur=cncall!. 
+
+By default, the inner most loop is not parallelized, but
+vectorized. However, you can force it to be parallelized using
+\verb!-Mconcur=innermost!.
+
+By default, beside the parallelized code, the compiler will generate
+an alternate code (sequential one) and it has dynamics check if the
+loops is large enough (over a threshold) to run the parallelized
+code. This check can be eliminated, so that it run the parallelized
+code all the time, via \verb!-Mconcur=noaltcode!.
+Such threshold, however, can also be set explicitly on a loop-by-loop
+basis using directives (Fortran) or pragmas (C/C++). 
+
+{\bf IMPORTANT}: By default, only one core is used, to use multicore,
+the environment variable \verb!NCPUS! need to be set.
+
+
+\subsection{x64 processors}
+\label{sec:x64-processors}
+
+\subsubsection{SSE Vectorization}
+\label{sec:sse-vectorization}
+
+SSE defines 8 new 128-bit registers (xmm0-xmm7). In addition, SSE
+define two types of operations: scalar and packed. With scalar
+operation, only data in the lowest 32bit is computed. With packed
+operation, the same single-precision floating-point operation on two
+pairs of 32-bit data (or one pair of 64-bit operands) at the same
+time\footnote{\url{http://www.songho.ca/misc/sse/sse.html}}, thus
+increase the performance.
+\begin{enumerate}
+\item Loops operate on 32-bit data: speed up is 2x
+\item Loops operate on 64-bit data: large percentage of speed-up
+\end{enumerate}
+{\bf NOTE}: For 32-bit data, the highest order is 1-bit sign, then
+8bit exponent, and 23bit mantissa.
+
+% SSE instructions process 128bit of data per instruction. Thus, it can
+% packed loop instruction either two 64-bit operands or four 32-bit
+% operands.  Thus, for loops operate on
+% \begin{itemize}
+% \item 32-bit data: it can speed up two times
+% \item 64-bit data: it can speed up large percentage, e.g. for
+%   floating-point operations with 20\%-30\% speed up
+% \end{itemize}
+Vectorization refer to the use of SSE packed instruction on data.  Use
+the option \verb!-fastsse! to enable SSE vectorization, and optionally
+with \verb!-Minfo! to display the compiling information. 
+\begin{enumerate}
+\item If you want to see why a loop is not vectorized, use
+  \verb!-Mneginfo!.
+\item \textcolor{red}{In C language}, by default, loops with
+  pointer-based arrays are not vectorized. If you know that the
+  pointers in ALL loops do not use overlapped data between iteration,
+  you can explicitly tell the compiler to use SSE vectorization with
+  \verb!-Msafeptr!.
+
+  When you specify \verb!-Msafeptr!, the vectorization apply to all
+  loops, however, this can be dangerous. If you only want to apply to
+  certain loops only, you are recommended to use pragma.
+\begin{itemize}
+\item \verb!safeptr! pragma
+\item \verb!nosafeptr! pragma
+\end{itemize}
+\end{enumerate}
+
+\textcolor{red}{In C/C++}, constants like \verb!2.! are treated as
+double by default. So, mixed precision in a loop prevent
+vectorization, you can force them to be treated as float using
+\verb!-Mfcon! option.
+
+Loops that has function call inside cannot be vectorized. In such
+cases, you can tell the compiler to inline the function using
+\verb!-Minline! or \verb!-Mipa=inline! compiler option (read
+Sect.~\ref{sec:-minline}).
+
+The compiler only allow loop vectorization when the body of the loops
+is not too big. So, in cases like inline function, the compiler may
+not perform loop vectorization. To force the compiler, we can use
+\verb!-Mvect=nosizelimit!. However, you need to benchmark the running
+time to see whether it run faster or not. 
+
+
+SUMMARY: Compile with \verb!-fastsse! is recommended, even if the
+program has not vectorizable loops. The reason is that \verb!-fastsse!
+automatically call \verb!-Mcache_align! which is very helpful. Loops
+should be examined one by one, so that a best optimization is set for
+each loop. 
+
+\section{Dependencies}
+\label{sec:dependencies}
+
+When you compile the code, some compiler options may implicit call
+other compiler options:
+\begin{itemize}
+\item When you set the debug flag ``-g'', then all optimization levels
+  are set to -O0.
+
+\item When you use \verb!-fastsse!, then \verb!-Mcache_align! is
+  called.
+\end{itemize}
+
+\section{Step by step in code writing}
+\label{sec:step-step}
+
+
+\begin{enumerate}
+\item Debugging: ``-g''
+\item Local and global optimization, Loop unrolling: ``-O1 -O2''
+\item Loop optimization with vectorization: ``-Mvect'' (if the program
+  contains many loops), to see the result add ``-Minfo=loop''
+\item Loop optimization with parallelization (codes for multiprocessor
+  system): ``-Mconcur'', to see the result add ``-Minfo'' ; you also
+  need to set the NCPUS environment variable (the number of CPUs). If
+  the compiler is not be able to successfully auto-parallelize the
+  code, you should consider inserting explicit parallelization OpenMP
+  directives with ``-mp'' flag.
+\item function inlining (if your program make many calls to small
+  functions, especially the calls are inside loops), use ``-Minline''.
+\item profiling (use PGPROF to determine the areas where the execution
+  is concentrated, based on the information supplied by the trace
+  file; to create the trace file, compile and link the codes with
+  ``-Mprof=func'' (function-level profiling), and ``-Mprof=lines''
+  (line-level profiling)
+\end{enumerate}
+
+
+Selecting the correct optimization level requires some thought and may
+require that you compare several optimization levels before arriving
+at the best solution. To compare optimization levels, you need to
+measure execution time of the program. 
+
+\begin{enumerate}
+\item You can use shell commands (/usr/bin/time) that provide
+  execution time statistics,
+\item you can include system calls in your code that provide timing
+  information (Sect.~\ref{sec:date--time}), or
+\item You can profile sections of code. 
+\end{enumerate}
+In general, any of these approaches will work; however, there are
+several important timing considerations to keep in mind. 
+\begin{enumerate}
+\item execution times should be at least 5 seconds (you can place the
+  loop around the main body to increase the execution time)
+\item timing should eliminate I/O and task switching.
+\item use \verb.SYSTEM_CLOCK. (intrinsic in PGF90, PGHPF), 
+\begin{verbatim}
+. . .
+      integer  :: nprocs, hz, clock0, clock1
+      real     :: time
+      integer, allocatable :: t(:)
+!hpf$ distribute t(cyclic)
+#if defined (HPF)
+      allocate (t(number_of_processors()))
+#elif defined (_OPENMP)
+      allocate (t(OMP_GET_NUM_THREADS()))
+#else
+      allocate (t(1))
+#endif
+      call system_clock (count_rate=hz)
+!
+      call system_clock(count=clock0)
+      < do work>
+      call system_clock(count=clock1)
+!
+      t = (clock1 - clock0)
+      time = real (sum(t)) / (real(hz) * size(t))
+\end{verbatim}
+\end{enumerate}
+
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 
+

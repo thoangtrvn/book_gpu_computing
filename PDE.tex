@@ -1,0 +1,69 @@
+
+\chapter{Partial Differential Equations}
+\label{chap:part-diff-equat}
+
+\section{Introduction}
+\label{sec:introduction-9}
+
+{\bf Partial differential equations} (PDE) is a powerful method that
+has been intensively utilized in computer simulation of continuous
+systems. PDE are classified into 3 categories:
+\begin{itemize}
+\item {\it hyperbolic}: e.g. the 1D wave equation
+  \begin{eqnarray}
+    \label{eq:13}
+    \frac{\partial^2 u}{\partial t^2} = v^2
+    \frac{\partial^2u}{\partial x^2}
+  \end{eqnarray}
+with $v$ is the velocity
+\item {\it parabolic}: e.g. the 1D diffusion equation
+  \begin{eqnarray}
+    \label{eq:14}
+    \frac{\partial u}{\partial t} = \frac{\partial}{\partial x}\left(
+    \frac{D\partial u}{\partial x}\right)
+  \end{eqnarray}
+with $D$ is diffusion coefficient. 
+\item {\it elliptic}: e.g. Poisson equation
+  \begin{eqnarray}
+    \label{eq:15}
+    \frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial
+      y^2}=  \rho(x,y)
+  \end{eqnarray}
+with $\rho$ is the source term. If $\rho=0$, it becomes {\it Laplace's
+  equation}. 
+\end{itemize}
+
+\section{Hyperbolic PDE}
+\label{sec:hyperbolic-pde}
+
+A {\bf hyperbolic PDE} of order $n$ is a PDE that has a well-posed IVP
+for the first $n-1$ derivatives. Many of the equations of mechanics
+are hyperbolic. The model of hyperbolic equation is the
+{\bf wave equation} (read Sec.~\ref{sec:wave-equation}). 
+\begin{eqnarray*}
+  u_{tt}-c^2u_{xx} = 0
+\end{eqnarray*}
+
+\section{Elliptic PDE}
+\label{sec:elliptic-pde}
+
+
+\section{Parabolic PDE}
+\label{sec:parabolic-pde}
+
+A {\bf parabolic PDE} is a second-order PDE, describing a wide family
+of problems in science, e.g. heat diffusion, stock option pricing,
+ocean acoustic propagation...
+
+A PDE of the form
+\begin{eqnarray*}
+  Au_{xx}+Bu_{xy}+Cu_{yy}+... = 0
+\end{eqnarray*}
+is a parabolic if $B^2-4AC=0$.
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

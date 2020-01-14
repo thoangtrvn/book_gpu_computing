@@ -1,0 +1,69 @@
+\chapter{OptiX Ray Tracing Engine}
+\label{chap:OptiX}
+
+
+\section{Introduction to Ray Traching}
+
+As rendering technology develops, its becoming difficult to distinguish from
+real worlds and virtual worlds. The situation is
+\begin{itemize}
+  \item You have a scene filled with various objects and light sources illuminating them.
+
+  \item You have a virtual camera located at a particular position.
+
+  \item Rendering basically captures the scene as the camera would and
+  generate an image.
+\end{itemize}
+
+Rendering is the process of generating an image (i.e. a {\it rendering}) from a
+2D or 3D model (a model is collectively called a {\it scence} file), using a
+computer program. We need to use some language or data structure to define this
+scence file which contains objects with geometry, viewpoint, texture,
+lighting, and shading information as a description of the virtual scene. 
+
+Once the light source is considered, we need to incorporate the effect of
+light/shading on the final image. The light-transport modelling
+techniques can be classified in 3 groups
+\begin{enumerate}
+  \item rasterization, e.g. scanline rendering: just projecting the objects in
+  the scence to a 2D image plane, without advanced optical effects
+  
+  \item ray casting: some basic optical laws of reflection intensity can be used
+  
+  \item ray tracing: more advanced than ray casting, with advanced optical
+  effects, usually with Monte carlo techniques to obtain more realistic results.
+  However, the speed is often orders of magnitude slower.
+  
+  \item radiosity: use to calculates the passage of light as it leaves the light
+  sources and illuminate surfaces.
+\end{enumerate}
+
+{\bf Ray traching} is the very simple and elegant rendering
+method. Ray tracing treats light as consisting of straight rays emanating from a light
+source and being reflected from.
+
+
+\subsection{OptiX 3.0.1}
+
+\begin{verbatim}
+C:\Program Files\NVIDIA Corporation\OptiX SDK 3.0.1
+\end{verbatim}
+
+\section{Radiosity}
+\label{sec:radiosity}  
+
+Unlike rendering methods that use Monte Carlo algorithms (such as path tracing),
+which handle all types of light paths, typical radiosity methods only account
+for paths which leave a light source and are reflected diffusely some number of
+times (possibly zero) before hitting the eye; such paths are represented by the
+code "LD*E"   
+
+Radiosity is a global illumination algorithm in the sense that the illumination
+arriving on a surface comes not just directly from the light sources, but also
+from other surfaces reflecting light  
+
+\url{http://en.wikipedia.org/wiki/Radiosity_(computer_graphics)}
+
+\url{http://mynameismjp.wordpress.com/2011/01/31/radiosity-dx11-style/}
+
+\url{https://optixdotnet.codeplex.com/}

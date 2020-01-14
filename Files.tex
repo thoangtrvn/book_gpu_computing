@@ -1,0 +1,121 @@
+
+\chapter{Files}
+\label{chap:files}
+
+
+
+% \section{Open a file}
+% \label{sec:open-file}
+
+
+
+% \section{Write to a file}
+% \label{sec:write-file-1}
+
+
+
+% \section{Read from a file}
+% \label{sec:read-from-file}
+
+\section{End-of-File detection}
+\label{sec:end-file-detection}
+
+We can use the END= keyword in the READ statement with the argument of
+END= is the statement label which will be executed when the
+End-of-File occur.
+
+End-of-File detection is useful when reading a file of unknown length,
+but some cautions is necessary. Especially when reading several record
+at a time from a formatted file, the data list items beyond the
+End-of-File will have their values unaltered. 
+
+
+\section{Check file status}
+\label{sec:check-file-status}
+
+Commonly, before performing some operations on a file, we want to know
+in advance its status. In Fortran, this can be done with the INQUIRE
+statement. The file is specified via the FILE clause (if the file has
+not opened, which require a string or a CHARACTER object containing
+the file name) or the UNIT clause (which is a file identifier of an
+opened file)\footnote{\url{http://rosettacode.org/wiki/File_Exists}}.
+
+\begin{verbatim}
+INQUIRE ([UNIT = fileref, ] inquiry-list)
+INQUIRE ([FILE = fileref,] inquiry-list)
+\end{verbatim}
+
+The information are returned in the dummy arguments specified in the
+$inquiry-list$ which is the set of different clauses
+\begin{lstlisting}
+IOSTAT = int_var    ! 0 for success; otherwise 
+   !it get a processor-dependent possitive number 
+EXIST = log_var     ! TRUE if file exist
+OPENED = log_var    ! TRUE if file opened
+NUMBER = int_var    ! the file identifier if file is 
+         opened, otherwise an UNDEFINED value
+NAMED = log_var     ! TRUE if the file has a name
+NAME = char_var     ! the name of the file if file is 
+         named, otherwise an UNDEFINED value
+\end{lstlisting}
+
+{\bf IMPORTANT}: INQUIRE is the statement, not a subroutine, so we don't
+need to use CALL in front of it. Further, remember to explicitly use
+FILE and argument name, e.g. EXIST, OPENED... when calling the
+statement. 
+\begin{lstlisting}
+INQUIRE(filename, EXIST=ext)      ! wront
+
+INQUIRE(FILE=filename, EXIST=ext) ! correct
+\end{lstlisting}
+
+
+\section{Remove a file}
+\label{sec:remove-file}
+
+From inside the program, we can call system commands, by representing the
+command as a string and pass it to the SYSTEM subroutine.
+
+\begin{lstlisting}
+str = 'rm readme.txt ' ! remove the file readme.txt
+CALL SYSTEM (str)
+\end{lstlisting}
+
+If the file is to be used for another purpose right immediately, you
+can choose the option to open it and replace it.
+\begin{lstlisting}
+OPEN(nout,file='x.txt',STATUS='replace')
+\end{lstlisting}
+
+\section{Reposition the file cursor}
+\label{sec:repos-file-curs}
+
+\subsection{REWIND}
+\label{sec:rewind}
+
+
+Use the REWIND statement to reposition at the beginning of the file
+for the next READ or WRITE. Generally you use a simple form like
+"rewind (11)", but you can include IOSTAT= and ERR= options. 
+
+\subsection{BACKSPACE}
+\label{sec:backspace}
+
+ At times during fancy input processing, you need to read a record,
+ process some information, then re-read the record to absorb the full
+32 information. This lets you back up one record so it can be
+ re-read. Repeated use of BACKSPACE is permitted to backup more than
+ one record. 
+
+\section{Obsolete features}
+\label{sec:obsolete-features-2}
+
+
+\begin{itemize}
+\item ENDFILE
+\end{itemize}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

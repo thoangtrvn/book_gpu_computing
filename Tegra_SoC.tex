@@ -1,0 +1,117 @@
+\chapter{Tegra SoC}
+\label{chap:Tegra}
+
+Tegra is a system-on-a-chip (SoC) comprising CPU, GPU and image, video \& sound
+processing cores in a highly energy efficient package that runs a variety of
+operating systems including Android, Linux and Windows.  A brief introduction of
+Tegra is given in Sect.\ref{sec:Tegra_nvidia}.
+
+\section{Tegra Android Development Pack (TDAP)}
+\label{sec:TDAP}
+
+TDAP helps developing for Android on NVIDIA's Tegra platform (SHIELD family of 
+devices, Google Nexus 9, Google Project Tango Tablet DevKit, Xiaomi MiPad, Tegra
+NOTE7, Tegra Developer Kits, Google Nexus 7, etc...).
+
+In order to develop apps running on Android O/S with Tegra SoC, we need to
+download \url{https://developer.nvidia.com/tegra-android-development-pack}.
+During setup, we need packages
+\begin{enumerate}
+  \item Android SDK
+  \item Android NDK r10c
+  \item JDK (Java Development Kit)
+  \item Apache Ant 1.8.2
+  \item Gradle 2.1
+  \item USB Driver
+  \item OpenCV for Tegra 2.4.8.2
+  \item PerfHUD ES 2.2.0
+  \item Tegra Graphics Debugger 1.2
+  \item Tegra System Profiler 2.2
+  \item PhysX 3.3.0 for Android
+  \item Nvidia PerfKit
+  \item IDE: either
+  \begin{itemize}
+    \item Nvidia Nsight Tegra 2.0 Visual Studio Edition
+    \item Eclipse with CDT (C/C++ Development Tool) and ADT (Android Development
+  Tool)
+  \end{itemize}
+  \item Nvidia Debug Manager for Eclipse (if Eclipse with CDT, ADT is used)
+  \item Cygwin
+  \item Tegra Android OS (Ardleg Kitkat 4.4): in case we need to flash the O/S
+  Image to the Tegra DevKit (Sect.\ref{sec:Tegra_Ardbeg_Devkit})
+  \item Samples and Documentation
+  \item Post Setup: compile samples and Install to device
+\end{enumerate}
+
+Older versions:
+\url{https://developer.nvidia.com/tegra-android-development-pack-archive}
+
+\subsection{TDAP 1.0}
+
+\subsection{TADP 2.0 (Nov, 2012)}
+
+It includes
+\begin{enumerate}
+  \item Nsight Tegra for Visual Studio (preview release)
+  
+  Flexible project management, accelerated compilation and integrated debugging,
+  no need to massage makefiles and shell scripts, no voodoo magic or arcane
+  incantations require.
+  
+  \item PerfHUD ES 1.9.7: includes numerous accuracy, performance and stability
+  enhancements
+  
+  \item NVIDIA Debug Manager for Eclipse 12.0.1
+  
+  \item Tegra Profiler 1.0
+  \item Perf for Tegra
+  \item OpenCV for Tegra 2.4.2
+  \item Tegra Android OS images: Cardhu, Ventana and Enterprise
+\end{enumerate}
+
+It uses
+\begin{verbatim}
+Android SDK r18
+Android APIs
+Google USB Driver
+Android NDK r8
+JDK 6u24
+Cygwin 1.7
+Eclipse 3.7.1
+CDT 8.0.0
+ADT 18.0.0
+Apache Ant 1.8.2
+Python 2.7
+\end{verbatim}
+
+\subsection{TDAP 3.0r4}
+
+TDAP 3.0r4 supports 64-bit Android 5.0 with Android SDK 23.0.2 and NDK (r10c)
+
+
+\section{PerfHUD ES} 
+
+\url{https://developer.nvidia.com/nvidia-perfhud-es}
+
+PerfHUD ES provides in-depth analysis of OpenGL ES applications running on
+Tegra-based devices. 
+
+
+\section{Tegra DevKit}
+\label{sec:Tegra_Devkit}
+
+\url{https://developer.nvidia.com/jetson-tk1}
+
+\subsection{Ardbeg}
+\label{sec:Tegra_Ardbeg_Devkit}
+
+NVIDIA Tegra Logan "Ardbeg" developer kit hardware and OS images are early
+prototypes.
+
+\url{http://docs.nvidia.com/gameworks/content/devices/ardbeg_setup_main.htm}
+
+
+
+\subsection{Dalmore}
+
+\url{http://docs.nvidia.com/gameworks/content/devices/dalmore_devkit_main.htm}

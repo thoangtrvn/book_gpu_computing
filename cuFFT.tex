@@ -1,0 +1,82 @@
+
+\chapter{cuFFT}
+\label{chap:cufft}
+
+% \section{cuFFT}
+% \label{sec:cufft}
+
+\section{Introduction}
+\label{sec:introduction-2}
+
+
+Fast Fourier Transform is a devide-and-conquer algorithm for
+efficiently computing discrete Fourier transform of complex or
+real-valued data sets. cuFFT is the CUDA implementation of the FFT
+library. 
+
+It can do
+\begin{enumerate}
+\item 1D, 2D and 3D transforms of complex and real-valued data
+\item Batched execution for doing multiple 1D transforms in parallel
+\item 1D transform size up to 8M elements
+\item 2D and 3D transform sizes in the range [2,16384]
+\item In-place and out-of-place transforms for real and complex data.
+\end{enumerate}
+
+Some functions:
+\begin{enumerate}
+\item real and complex transform: \verb!cufft_C2C!, \verb!cufft_C2R!,
+  \verb!cufft_R2C!
+\item direction of transform: \verb!cufft_FORWARD (-1)! and
+  \verb!cufft_INVERSE (1)!
+\item a complex type is defined: \verb!cufftComplex!
+\item real to complex FFT (i.e. output array holds only non-redundant
+  coefficients): 
+  \begin{itemize}
+  \item thus N element $\rightarrow$ $N/2+1$ elements.
+  \item for in-place transform, the input/output arrays need to be
+    padded. 
+  \end{itemize}
+\item un-normalized transform: \verb!IFFT(FFT(A))= length(A)*A!
+\end{enumerate}
+
+{\bf NOTE}: For 2D and 3D transform, cuFFT use row-major (C-order).
+Thus, if calling from FORTRAN or MATLAB, remember to change the order
+of size parameters during plan creation.
+
+CUFFT APIis is modeled after FFTW.
+
+{\bf NOTE}: Once a plan is created, the library stores whatever state
+is needed to execute the plan multiple times without recomputing the
+configuration.
+
+
+\begin{lstlisting}
+#define NX 256
+#define NY 128
+
+cufftHandle plan;
+cufftComplex *idata, *odata;
+cudaMalloc((void**)&idata, sizeof(cufftComplex)*NX*NY);
+cudaMalloc((void**)&odata, sizeof(cufftComplex)*NX*NY);
+ :
+/* Create a 1D FFT plan. */
+cufftPlan2d(&plan, NX,NY, CUFFT_C2C);
+/* Use the CUFFT plan to transform the signal out of place. */
+cufftExecC2C(plan, idata, odata, CUFFT_FORWARD);
+/* Inverse transform the signal in place. */
+cufftExecC2C(plan, odata, odata, CUFFT_INVERSE);
+/* Note:
+Different pointers to input and output arrays implies 
+out of place transformation
+*/
+/* Destroy the CUFFT plan. */
+cufftDestroy(plan);
+cudaFree(idata), cudaFree(odata);
+\end{lstlisting}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

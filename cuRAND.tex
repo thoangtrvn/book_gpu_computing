@@ -1,0 +1,199 @@
+\chapter{CURAND (CUDA Random Number Generator)}
+\label{chap:cuRAND}
+
+\section{introduction}
+
+cuRAND is an nVIDIA library designed to generate pseudo-random numbers (1D
+dimension), and quasi-random numbers (multidimensional space). The algorithms
+are deterministic. So, for a given seed value, we always get the same sequences.
+Depending on how long of your simulation, you may expect the sequence period to
+be long enough so that it's not repeated in your simulation. 
+
+cuRAND APIs can be used to generate random numbers on CPU side or GPU side,
+depending on the APIs you use. 
+\begin{verbatim}
+#include </include/curand.h>
+\end{verbatim}
+For random numebers generated on GPU side, they're stored on global device
+memory. 
+\begin{verbatim}
+#include </include/curand_kernel.h>
+\end{verbatim}
+
+Using different versions of curand.h and shared library is not supported. So,
+it's important to know which version of CUDA you're using. 
+\begin{enumerate}
+  \item quasi-random Sobol supports 32-bit and 64-bit with upto 20,000
+  dimensions.
+\end{enumerate}
+
+What to do?
+\begin{enumerate}
+  \item \verb!curandCreateGenerator()! create a generator (GPU side) or
+  \verb!curandCreateGeneratorHost()! (CPU side)
+  \item \verb!curandSetPseudoRandomGeneratorSeed()! set a seed value
+  \item Choose the distribution to generate data
+  \begin{verbatim}
+  curandGenerateUniform()/(curandGenerateUniformDouble(): Uniform
+curandGenerateNormal()/cuRandGenerateNormalDouble(): Gaussian
+curandGenerateLogNormal/curandGenerateLogNormalDouble(): Log-Normal
+  \end{verbatim}
+  
+  NOTE: the output pointer you pass to curandGenerateUniform() will be a pointer
+  to host memory allocated with malloc() for the generator created with
+  curandCreateGeneratorHost(). For a generator created with
+  curandCreateGenerator() the pointer will be to device memory allocated with cudaMalloc().  
+  
+  \item \ldots 
+  \item When you're finished, call \verb!curandDestroyGenerator()! to destroy
+  the generator. 
+\end{enumerate}
+
+IMPORTANT: Using the same seed and the same method, but the generated sequences
+on CPU and GPU are the same if using the generator. Using device APIs are not
+guaranteed. The only way to guarantees you always get the same sequence is to
+generate from CPU side and copy to GPU \footnote{\url{http://forums.nvidia.com/index.php?showtopic=191089}}. 
+
+
+If you want to generate a random number directly from inside the device kernel
+(i.e. inline generation), you can use device API like \verb!curand_init()! and
+\verb!curand_uniform()!. In this scenario, the generated random numbers can be directly stored in the
+register, rather than global device memory. There is an "unsupported" way
+(i.e. not documented and not fully tested) to get CPU versions of
+\verb!curand_init()! and \verb!curand_uniform()!. To get CPU version of the
+device APIs, we can do
+\begin{verbatim}
+#define QUALIFIERS __host__ __device__
+#include <curand_kernel.h>
+#undef QUALIFIERS
+\end{verbatim}
+
+Using \verb!curand_init()! and \verb!curand()! from the device API gives you one
+stream of random numbers. Using \verb!curandGenerate()! launches 4096 threads on
+the device, each one of which is doing \verb!curand_init()! and then lots of
+calls to curand().
+
+
+
+\section{cuRAND on CUDA 3.2}
+\label{sec:cuRAND_CUDA3.2}
+
+It supports Sobol quasi-random and XORWOW pseudo-random number generators.
+  
+\subsection{Sobol}
+
+\subsection{XORWOW}
+
+The precomputed arrays are declared as \verb!__constant__! tables in
+\verb!curand_precalc.h!.
+
+
+\section{cuRAND on CUDA 4.1}
+\label{sec:cuRAND_CUDA4.1}
+
+\subsection{MRG32k3a}
+\label{sec:MRG32k3a}
+
+L'Ecuyer's Multiple Recursive Generator
+is the one that used Combined Multiple Recursive Generators (CMRG) in order to
+produce a generator that had good randomness properties with a long
+period, while at the same time being fairly straightforward to implement.
+
+ 
+
+The library need to use some pre-computed matrices, declared in the file
+\verb!curand_mrg32k3a.h!. So we need to include this file all the time we use
+MRG32k3a. 
+
+Prior calling the init, we need to copy the arrays (matrix) to device memory and
+fill in a structure of type \verb!curandMRG32k3aPtrs_t! with the device pointers to the
+corresponding arrays, and copy that structure to device memory.
+
+\begin{verbatim}
+ curandMRG32k3aPtrs_t MRG;
+        curandMRG32k3aPtrs_t gpu_scratch_area;
+        int * MRGTables
+
+        if(cudaMalloc((void **)&(MRG.unitsM1),
+                        (2 * sizeof(struct sMRG32k3aSkipUnits)) + 
+                        (2 * sizeof(struct sMRG32k3aSkipSubSeq)) + 
+                        (2 * sizeof(struct sMRG32k3aSkipSeq)) +
+                        sizeof(curandMRG32k3aPtrs_t) )!= cudaSuccess)
+        {
+            return CURAND_STATUS_ALLOCATION_FAILED;
+        }
+        if(cudaMemcpy(MRG.unitsM1,
+                      ((char *)(&mrg32k3aM1[0][0][0])),
+                      sizeof( struct sMRG32k3aSkipUnits ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        MRG.unitsM2 = (sMRG32k3aSkipUnits_t *)((char *)MRG.unitsM1 + 
+                        sizeof( struct sMRG32k3aSkipUnits ));
+        if(cudaMemcpy(MRG.unitsM2, 
+                      &mrg32k3aM2[0][0][0],
+                      sizeof( struct sMRG32k3aSkipUnits ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        MRG.subSeqM1 = (sMRG32k3aSkipSubSeq_t *)((char *)MRG.unitsM2 + 
+                        sizeof( struct sMRG32k3aSkipUnits ));
+        if(cudaMemcpy(MRG.subSeqM1, 
+                      &mrg32k3aM1SubSeq[0][0][0],
+                      sizeof( struct sMRG32k3aSkipSubSeq ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        MRG.subSeqM2 = (sMRG32k3aSkipSubSeq_t *)((char *)MRG.subSeqM1 + 
+                        sizeof( struct sMRG32k3aSkipSubSeq ));
+        if(cudaMemcpy(MRG.subSeqM2, 
+                      &mrg32k3aM2SubSeq[0][0][0],
+                      sizeof( struct sMRG32k3aSkipSubSeq ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        MRG.seqM1 = (sMRG32k3aSkipSeq_t *)((char *)MRG.subSeqM2 + 
+                     sizeof( struct sMRG32k3aSkipSubSeq ));
+        if(cudaMemcpy(MRG.seqM1, 
+                      &mrg32k3aM1Seq[0][0][0],
+                      sizeof( struct sMRG32k3aSkipSeq ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        MRG.seqM2 = (sMRG32k3aSkipSeq_t *)((char *)MRG.seqM1 + 
+                     sizeof( struct sMRG32k3aSkipSeq ));
+        if(cudaMemcpy(MRG.seqM2, 
+                      &mrg32k3aM2Seq[0][0][0],
+                      sizeof( struct sMRG32k3aSkipSeq ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        gpu_scratch_area = (unsigned int *)((char *)MRG.seqM2 + 
+                               sizeof( struct sMRG32k3aSkipSeq ));
+        if(cudaMemcpy(gpu_scratch_area, 
+                      &MRG,
+                      sizeof( curandMRG32k3aPtrs_t ), 
+                      cudaMemcpyHostToDevice) != cudaSuccess)
+        {
+            cudaFree(MRG.unitsM1);
+            return CURAND_STATUS_INITIALIZATION_FAILED;
+        }
+        MRGTables = (int *)MRG.unitsM1;
+\end{verbatim}
+
+References:
+\begin{itemize}
+  \item \url{http://forums.nvidia.com/index.php?showtopic=224938}
+\end{itemize}

@@ -1,0 +1,78 @@
+%%
+%% MatrixVector.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Thu Oct  1 13:03:35 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+
+\chapter{Matrix and Vector operations}
+\label{chap:matr-vect-oper}
+
+\section{Matrix-Matrix}
+\label{sec:matrix-matrix}
+
+\subsection{M-M multiplication}
+\label{sec:m-m-multiplication}
+
+\subsubsection{DO loop}
+\label{sec:do-loop}
+
+You use 3 DO loops.
+
+\begin{lstlisting}
+  REAL, DIMENSION(*,*), ALLOCATABLE:: A, C, B
+  INTEGER, INTENT(IN) :: rA, cA, rB, cB
+  INTEGER, INTENT(INOUT) :: rC, cC
+
+  rC = rA
+  cC = cB
+  
+  DO i = 1, rC
+     DO j = 1, cC
+        C(i, j) = 0.
+        DO k = 1, cA
+           C(i, j) = C(i, j) + A(i, k)*B(k, j)
+        ENDDO
+     ENDDO
+  ENDDO
+\end{lstlisting}
+
+\subsubsection{matmul }
+\label{sec:matmul-}
+
+MATMUL is an intrinsic subroutine whose detail implementation is
+compiler-dependent. So, different compiler may give different
+performance when with a program that use MATMUL.
+
+\begin{lstlisting}
+   REAL(KIND=kr8), DIMENSION(:,:), ALLOCATABLE:: A, B, C
+   CALL CPU_TIME(start)
+   C = MATMUL(A, B)
+   CALL CPU_TIME(finish)
+\end{lstlisting}
+\subsubsection{BLAS level 1, 2}
+\label{sec:blas-level-1}
+
+BLAS use DGEMM or SGEMM for matrix-matrix multiplication. 
+\begin{lstlisting}
+   alpha = 1.0d0
+   beta = 0.0d0
+   rC = rA
+   cC = cB
+   IF (ALLOCATED(C)) THEN
+      DEALLOCATE(C)
+   END IF
+   ALLOCATE(C(rC, cC))
+   CALL CPU_TIME(start)
+   CALL dgemm('N', 'N', rA, cB, cA, alpha, A, rA, B, &
+        rB, beta, C, rA)
+   CALL CPU_TIME(finish)
+\end{lstlisting}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

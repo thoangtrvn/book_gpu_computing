@@ -1,0 +1,80 @@
+%%
+%% CodingConvention.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Thu Jul 23 13:44:41 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+
+\chapter{Coding conventions}
+\label{chap:coding-conventions}
+
+\section{Filename}
+\label{sec:filename}
+
+A module should be given a good name
+\begin{itemize}
+\item new data structure, e.g. matrix, vector... should be in the file
+  with the same name, e.g. matrix.f95, vector.f95
+
+\item utility function should be classified into its appropriate group
+  with the filename ending in \lstinline!_util.f95!,
+  e.g. \lstinline!math_util.f95!
+\end{itemize}
+
+\section{Variables}
+\label{sec:variables}
+NOTE:
+
+Length should be less than 31.
+
+Array variables start with \lstinline!a_!
+
+Vector variables start with \lstinline!v_!
+
+Matrix variables start with \lstinline!m_!
+
+Integer type ends with \verb!_i!
+
+Real type ends with  \verb!_r!
+
+Variables with multiple words should be separated by underscore (\_).
+
+\section{Methods}
+\label{sec:methods}
+
+Methods are lower case connected with underscores, i.e. init\_fruit,
+failed\_assert\_count. Methods should begin with a verb, e.g. get,
+set, calculate...
+
+All methods (written in a module) must be exposed by interface
+\begin{lstlisting}
+MODULE 
+  INTERFACE init_data
+CONTAINS
+ ...
+END MODULE
+\end{lstlisting}
+
+\section{Lines}
+\label{sec:lines}
+
+Keep each line less than 132 characters, however 80 is the recommended
+limit.
+
+\section{Programming Style}
+\label{sec:programming-style}
+
+\begin{enumerate}
+\item Use \verb!IMPLICIT NONE!
+\item Use \verb!DO ENDDO! rather than DO-loops
+\item Use variable names with more than 6 characters and/or underscore
+\item Initialize variables before using it
+\end{enumerate}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

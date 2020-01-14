@@ -1,0 +1,187 @@
+\chapter{CUDA in C\#}
+\label{chap:CUDA_Csharp}
+
+First need to add Intellisense support for CUDA C in Visual Studio
+\begin{verbatim}
+Open Tools | Options | Projects and Solutions | VC++ Project Settings
+Add ".cu" to the Extensions To Include (VS2010)
+\end{verbatim}
+Next, add CUDA include path to the project's VC++ Directories
+\begin{verbatim}
+Open the project's properties dialog
+Select the Configuration Properties | VC++ Directories tab
+Append $(CUDA_INC_PATH) to the list of Include Directories
+\end{verbatim}
+example: \verb!"$(IncludePath);$(CUDA_INC_PATH)".! Adding the CUDA include path
+will allow VS to find included CUDA headers, line "cuda.h" in the IDE. Without
+this step CUDA projects will still compile but right clicking on a CUDA header
+file and selecting Open Document will not work. If you are using other libraries
+like Thrust then you will want to make sure that it's include path is also added
+here.   
+\url{http://www.ademiller.com/blogs/tech/2010/10/visual-studio-2010-adding-intellisense-support-for-cuda-c/}
+
+Just decide whether you want to develop your kernels on top of the driver only,
+or the runtime. Then, you just use nvcc to compile your kernels (written in
+C/C++) to a .cubin, and P/Invoke the driver (or runtime) DLL functions that
+allocate memory, launch the kernels, etc.
+\begin{verbatim}
+[DllImport("nvcuda")]
+
+public static extern CUResult cuMemAlloc(ref CUdeviceptr dptr, uint bytesize);
+\end{verbatim}  
+
+\section{managedCUDA (from CUDA 6.5)}
+\label{sec:managedCUDA}
+
+ManagedCUDA provides a complete wrapper for CUDA Driver API (version 6.5) in
+C\#. CUDA C APIs provides the CUDA runtime APIs which wrap CUDA Driver APIs.
+Thus, to wrap CUDA Driver APIs in an object-oriented, we need to use
+ManagedCUDA. In general you can find C\# classes for each Cuda handle in the
+driver API.
+\begin{verbatim}
+CUContext   -->  CudaContext class
+\end{verbatim}
+ In the original Cuda driver API those are given by standard C pointers. In
+managedCuda these are represented by the class
+\verb!Cuda[Pitched]DeviceVariable<T>! which is a generic class allowing type
+safe and object-oriented access to CUDA Driver APIs.
+
+
+We can use CUDA context, kernel, device variable, etc. directly from C\#.
+There are different binaries to work with different .NET versions: .NET 2.0,
+.NET 4.0 and Mono/Linux. The default one is for .NET 4.0.
+
+It also provides wrapper for graphics interop with DirectX, OpenGL via SlimDX
+and OpenTK, respectively. 
+
+Operators (+, -, *, /) and proper \verb!ToString()! methods for CUDA vector
+types: int2, float3, \ldots
+
+Wrappers to all CUDA libraries: CUFFT, CURAND, CUSPARSE, CUBLAS, NPP.
+
+\subsection{Allocate and Initialize data in GPU}
+
+One line to do allocation and initialization: \verb!CudaDeviceVariable! generics
+is used to define a variable of a specific type on GPU.
+\begin{verbatim}
+float3[] array_host = new float3[100];
+for (int i = 0; i < 100; i++)
+{
+  array_host[i] = new float3(i, i+1, i+2);
+}
+
+// copy from CPU to GPU
+//alloc device memory and copy data:
+CudaDeviceVariable<float3> array_device = array_host;
+
+// copy from GPU to CPU
+//alloc host array and copy data: 
+float3[] array_host2 = array_device; 
+\end{verbatim}
+
+ \verb!CudaDeviceVariable! generics accept any user defined tpe if it is a value
+ type, i.e. a struct in C\#.
+
+\subsection{Access GPU array elements using [] operator}
+
+\begin{verbatim}
+CudaDeviceVariable<float> devVar = new CudaDeviceVariable<float>(64);
+devVar[0] = 1.0f;
+devVar[1] = 2.0f;
+float hostVar1 = devVar[0];
+float hostVar2 = devVar[1];
+\end{verbatim}
+
+\subsection{NPPs extension methods can be used}
+
+Add a reference to NPP library (Chap.\ref{chap:nvidia-npp}) and include
+\verb!ManagedCuda.NPP.NPPsExtensions! namespace. 
+
+
+\section{CUDAfy.NET}
+\label{sec:CUDAfy}
+
+CUDAfy allows .NET developers to easily create complex applications that split
+processing cleanly between host and GPU. CUDAfy supports both CUDA and OpenCL
+code generation and therefore has the ability to run the same applications on:
+\begin{enumerate}
+  \item CUDA-capable GPU (using CUDA or OpenCL)
+  \item AMD GPU (using OpenCL)
+  \item Intel CPU (using OpenCL)
+\end{enumerate}
+
+CUDAfy.NET (1.27) currently supports CUDA 6.0, with CUDA math libraries (CUFFT,
+CUBLAS, CUSPARSE, CURAND). Using these math libraries is not supported with CUDA
+5.x and 6.5.
+
+\url{https://cudafy.codeplex.com/downloads/get/882502}
+
+CUDAfy.NET has examples and supporting documents; yet the binaries requires .NET
+4.0 or above. Also, CUDAfy.NET still lacks some CUDA features (texture
+management, etc.)
+
+Code:
+\url{http://www.codeproject.com/Articles/202792/Using-Cudafy-for-GPGPU-Programming-in-NET}
+
+\section{CUDA.NET}
+\label{sec:CUDA.NET}
+
+CUDA.NET is old (support upto CUDA 3.0), with little support document, and no
+example.
+\begin{enumerate}
+  \item CUDA.NET 1.1: support CUDA 1.1 only. 
+  
+  (alpha) Windows XP only, (beta) add Linux support, (beta 2) add Windows Vista,
+  (beta 3) CUDADriver, CUBLASDriver and CUDA structures, MONO 1.9, add Mac OS/X
+  support, (official) add object model to ease development and 32/64-bit O/S.
+  
+  \item CUDA.NET 2.0: support CUDA 2.0: double precision, new BLAS routines
+  
+  \item CUDA.NET 2.0.1: add \verb!ToString()! method in CUDAException
+  
+  \item CUDA.NET 2.0.2: use C\# reflection in CUDA, CUFFT, and CUBLAS classes
+  (Sect.\ref{sec:reflection}).
+  
+  \item CUDA.NET 2.0.3: add CUDA runtime API, Direct3D, OpenGL interoperability,
+  add texture function, add 3D memory operations, fix copying vector types.
+  
+  \item CUDA.NET 2.0.4: add support CUFFT and CUBLAS emulation, add new class
+  CUDAExecution for easy execution CUDA kernels
+  
+  add Windows HPC Server 2008, Windows CE.
+  
+  \item CUDA.NET 2.1 (2009): support CUDA 2.1 APIs (DirectX 10 and JIT compiler
+  support)
+  
+  \item CUDA.NET 2.2: support CUDA 2.2 (zero-copy, extended APIs)
+  
+  \item CUDA.NET 2.3: support CUDA 2.3 (double precision FFT, extended OpenGL
+  APIs, fixed runtime APIs)
+  
+  CUDA.NET 2.3.1: fixed FFT naming to match CUFFT
+  
+  CUDA.NET 2.3.2: update DirectX and OpenGL APIs to conform CUDA APIs
+  
+  CUDA.NET 2.3.3: minor update to CUDA class
+  
+  CUDA.NET 2.3.4/2.3.5: update native wrapper, remove special marshalling
+  directives (Sect.\ref{sec:marshalling})
+  
+  CUDA.NET 2.3.6: update native wrappers, add \verb!SizeT! structure to handle
+  32/64 systems compatibility for functions taking \verb!size_t! as parameter.
+  
+  CUDA.NET 2.3.7: update runtime types to work with \verb!SizeT!
+  
+  \item CUDA.NET 3.0.0: support CUDA 3.0 APIs, add special class for CUDA
+  synchronization in multi-device and multi-threaded applications.
+  
+  add Windows 7 support.
+\end{enumerate}
+ 
+
+\url{http://www.cass-hpc.com/solutions/libraries/cuda-net/cuda-net-archive}
+
+
+\section{GPU.NET}
+\label{sec:GPU.NET}
+

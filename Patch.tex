@@ -1,0 +1,79 @@
+
+\chapter{Patch a program}
+\label{chap:patch-program}
+
+To compare the difference between two files, you can use different
+tools.
+\begin{itemize}
+\item To apply a patch to a source code, you need to have a file that
+display the difference between the current version and the new
+version.  This can be done by the \verb!diff! tool.
+
+\item To compare two compressed files, you can use either \verb!zcmp!
+  or \verb!zdiff! or \verb!bzdiff!. 
+
+\item To merge two files,  you can use \verb!sdiff!
+
+\item To display word difference between two files, you can use
+  \verb!wdiff!. 
+\end{itemize}
+
+\section{diff tool}
+\label{sec:diff-tool}
+
+diff tool is a {\bf file comparison utility} that output the
+difference between two files. The files can be text files or binary
+files. For text files, it display changes made per line. The output is
+called a {\bf patch}. To fix the current source file, you can apply
+the patch to the current version using a Unix tool called
+\verb!patch!.
+
+Here is a sample patch file:
+\begin{verbatim}
+--- /etc/default/grub 2009-11-12 17:44:41.484057760 -0500
++++ /tmp/grub.4eVHSnVuOQ 2010-02-10 15:22:03.327081665 -0500
+@@ -4,7 +4,7 @@
+ GRUB_DEFAULT=0
+ #GRUB_HIDDEN_TIMEOUT=0
+ GRUB_HIDDEN_TIMEOUT_QUIET=true
+-GRUB_TIMEOUT=10
++GRUB_TIMEOUT="10"
+ GRUB_DISTRIBUTOR=`lsb_release -i -s 2> /dev/null || echo Debian`
+ GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+ GRUB_CMDLINE_LINUX=""
+\end{verbatim}
+At the beginning of the patch file is the two-line headers: the
+original files is preceded by ``---'', while the new file is preceded
+by ``+++''. Each line contain the file information, including the full
+path and time stamp. 
+\begin{verbatim}
+--- /path/to/original ''timestamp''
++++ /path/to/new      ''timestamp''
+\end{verbatim}
+
+After the two header lines, there are one or more {\bf change hunks}
+(chunks) that contain the line difference between the two files. A
+chunk begins with a range of information (surrounded by a double-at
+signs @@)
+\begin{verbatim}
+@@ -R +R @@
+\end{verbatim}
+with $R$ is of the form $l,s$, where $l$ is the starting line number,
+and $s$ is the number of lines the change hunk applies to. Here $-R$
+is the chunk range for the old file, and $+R$ is the chunk range for
+the new file. 
+
+
+, then followed by lines starting with either
+\begin{itemize}
+\item The ``!'' represent a change between line in two files
+
+\item The ``+'' represents the addition of a line
+
+\item The ``-'' represents the deletion of a line
+\item The blank space represent an unchanged line 
+\end{itemize}
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

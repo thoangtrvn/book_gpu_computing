@@ -1,0 +1,85 @@
+
+\chapter{Interoperability CUDA Fortran and C}
+\label{chap:inter-cuda-fortr}
+
+\begin{table}[hbt]
+\begin{center}
+\caption{Comparison}
+\begin{tabular}{cc} 
+  \hline
+  CUDA C & CUDA Fortran \\ 
+  \hline\hline
+  support texture memory & no \\
+  support runtime API & yes \\
+  support driver API & no \\
+  cudaMalloc, cudaFree & allocate, deallocate \\
+  cudaMemcpy & using assignments \\
+  OpenGL interoperability & no\\
+  Direct3D interoperability & no \\
+  texture memory & no \\
+  array zero-based & array 1-based \\
+  threadIdx/blockIdx zero-based & 1-based \\
+  use unbounded pointers (for dynamic data) & allocatable are device/host \\
+  pinned allocate routines & pinned attribute \\
+\hline
+\end{tabular}
+\end{center}
+\label{tab:CUDA_F_C}
+\end{table}
+
+From Fortran, we can call CUDA C kernel by defining explicit interface
+with \verb!bind(C)!
+\begin{lstlisting}
+use cudafor
+
+interface
+  attributes(global) subroutine saxpy(a, x, y, n) bind(c)
+    real, device :: x(*), y(*)
+    real, value :: a
+    integer, value :: n
+  end subroutine
+end interface
+
+....
+call saxpy<<<grid, blocks>>>(aa, xx, yy, nn)
+\end{lstlisting}
+
+From C we can call CUDA Fortran kernels
+\begin{lstlisting}
+extern __global__ void saxpy_ ( float a, float*x, float*y, int n) ;;
+
+...
+saxpy_ (a, x, y, n);
+\end{lstlisting}
+with the function in Fortran is
+\begin{lstlisting}
+attributes (global) subroutine saxpy(a, x, y, n)
+  real, value :: a
+  real :: x(*), y(*)
+  integer, value :: n
+ ....
+
+end subroutine
+\end{lstlisting}
+There are important to notice
+\begin{enumerate}
+\item the name is right, i.e. one underscore behind
+  (\verb!subroutine_!, or \verb!module_subroutine_!)
+\item pass value vs. reference arguments
+\end{enumerate}
+
+
+If you're working directly with source code, 
+\begin{enumerate}
+ \item Fortran CUDA kernel can be linked with \verb!nvcc!
+\item C CUDA kernel can also be linked with \verb!pgfortran!, using
+  \verb!-Mcuda! flag. 
+\end{enumerate}
+
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

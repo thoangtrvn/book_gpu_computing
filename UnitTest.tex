@@ -1,0 +1,487 @@
+%%
+%% UnitTest.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Thu Jul 23 13:02:24 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+
+\chapter{Unit Testing}
+\label{chap:unit-testing}
+
+There are two major choices for Fortran Unit Testing\footnote{\url{http://fortranwiki.org/fortran/show/Unit+testing+frameworks}}\footnote{\url{http://www.sesp.cse.clrc.ac.uk/Publications/tools_report_2006/node11.html}}:
+\begin{itemize}
+\item Funit\footnote{\url{http://nasarb.rubyforge.org/}}
+\item FRUIT\footnote{\url{http://fortranwiki.org/fortran/show/Fortran+Unit+Test+Framework}}
+\end{itemize}
+
+\section{FUnit}
+\label{sec:funit}
+
+FUnit stands for Fortran Unit testing. For detail, read
+\url{http://jblevins.org/computing/fortran/funit/}
+\begin{enumerate}
+\item Download the .gem file
+
+\item Add FC environment variable to the correct Fortran compiler,
+  e.g. in the ~/.bashrc file
+\begin{verbatim}
+export FC="pgf95"
+\end{verbatim}
+
+\item Install
+\begin{verbatim}
+sudo gem install funit-0.10.2.gem
+sudo gem install rails
+\end{verbatim}
+\end{enumerate}
+
+\subsection{Limitation}
+\label{sec:limitation}
+
+\begin{enumerate}
+\item Function/subroutines to be tested need to be in a module
+
+\item The module name (e.g. calculator.f95) and the test file has the
+  same name, except the extension of the test file is .fun
+  (e.g. calculator.fun)
+
+\item Each test file can contain multiple tests, as well as
+  {\it setup} and {\it teardown} command that are executed once for
+  each test.
+
+\item There are 6 types of assertions:
+\begin{verbatim}
+assert_true(expr)
+
+assert_false(expr)
+
+assert_equal(a, b)
+
+assert_real_equal(a, b)
+
+assert_equal_with(a, b, tol)
+
+assert_array_equal(a,b) ! no space after comma
+\end{verbatim}
+
+\item FUnit can tell (1) which test failed, (2) which assertion
+  failed, (3) which line of the offending assertion is on.
+
+\item The test have to be aligned at the first column.
+\end{enumerate}
+
+\subsection{Write test codes}
+\label{sec:write-test-codes}
+
+Module need to be tested is {\it circle\_class.f95}
+\begin{lstlisting}
+module circle_class
+  implicit none
+  private
+  public :: circle, circle_area
+
+  type circle
+    real :: radius
+  end type circle
+contains
+
+  function circle_area(this) result(area)
+     type(circle), intent(in) :: this
+     ...
+  end function circle_area
+
+end module circle_class
+\end{lstlisting}
+
+\begin{enumerate}
+\item Create a .fun file with the same name of the module  whose
+  subroutines/functions need to be tested.
+
+\item The test suite look likes
+\begin{lstlisting}
+test_suite circle_class
+  ! declare global variables
+  real :: c
+  real, parameter :: radius = 1.5d0
+
+setup
+  ! code that you want to run before each test
+
+  c = circle(radius)
+end setup
+
+teardown
+  ! code that run immediately after each test
+end teardown
+
+test test_name_here
+
+end test
+
+test radius_is_stored_properly
+  assert_real_equal(radius, 1.5d0)
+end test
+
+end test_suite
+\end{lstlisting}
+
+\item Run the test
+\begin{lstlisting}
+funit circle_class
+
+! funit module_name
+\end{lstlisting}
+
+\item Clean up everything
+\begin{lstlisting}
+funit --clean
+\end{lstlisting}
+
+\end{enumerate}
+
+Now, testing Fortran code using FUnit is very easy with makefile.
+\begin{lstlisting}
+test:
+     funit circle_class
+     <add more command here>
+
+clean: 
+     -rm *.o *.mod
+     funit --clean
+\end{lstlisting}
+
+
+\section{FRUIT}
+\label{sec:fruit}
+
+FRUIT is an acronym for FoRtran UnIT testing framework. It is written
+in Fortran 90 and thus support full features of Fortran 90/95. FRUIT
+use TDD (Test-Driven Development) framework. Here are necessary steps
+to make it works for your project.
+
+{\bf This needs to be done only once}
+\begin{enumerate}
+
+\item Make sure these tools are installed
+\begin{verbatim}
+sudo apt-get install ruby ruby-gems1.9 rake irb
+\end{verbatim}
+
+\item Download the latest version (here is 2.7), extract it and rename
+  the folder to \verb!fruit!. 
+
+\item Jump to the fruit folder
+\begin{verbatim}
+cd fruit
+cd fruit_processor_gem
+gem install pkg/fruit_processor-2.7.gem 
+\end{verbatim}
+
+\end{enumerate}
+{\bf IMPORTANT NOTES}: FRUIT is incompatible with
+  \href{https://agora.cs.illinois.edu/display/cs427fa08/Unit+Testing+with+FRUIT}{gfortran
+    in Macs}.
+
+{\bf This should be done only once for each project}
+\begin{enumerate}
+
+\item copy the \verb!rakebase.rb! file to your project directory. Edit
+  this file to make sure 
+  \begin{enumerate}
+  \item it contains the correct compiler
+\begin{verbatim}
+$compiler = 'pgf95'
+\end{verbatim}
+% \item adjust the file extension (default is .f90) and object file
+%   extension (default is .o)
+% \begin{verbatim}
+%  SRC = FileList['*.f90'].sort
+%  OBJ = SRC.ext('o')
+%   ! adjust any other place with .f90 to the correct
+%   ! extension, e.g. .f95
+% \end{verbatim}
+% \item You can also set some necessary directories
+% \begin{verbatim}
+%  $base_dir = FruitProcessor.new.base_dir if ! $base_dir
+%  $build_dir = FruitProcessor.new.build_dir if ! $build_dir
+
+%  $lib_bases = {} if !$lib_bases
+%  $inc_dirs = [] if !$inc_dirs
+% \end{verbatim}
+
+\end{enumerate}
+
+\item create the \verb!test! folder inside the project directory
+
+\item adjust the makefile to have these information
+\begin{verbatim}
+
+\end{verbatim}
+
+\item Copy the two files \verb!/src/fruit.f90, /src/fruit_util.f90! to
+  your project directory.
+% \item copy the two files /src/fruit.f90, /src/fruit\_util.f90 to your
+%   \verb!test! folder.  It is recommended that you compile these two
+%   file first
+% \begin{verbatim}
+% pgf95 -c fruit_util.f90
+% pgf95 -c fruit.f90
+% \end{verbatim}
+
+%  If you're using f95, make sure to rename its extension to .f95.
+
+% \item Create a rakefile in the project directory, suppose that
+%   \verb!calculator! is the name of your project.
+
+% \begin{verbatim}
+% require 'rubygems'
+% require 'fruit_processor'
+
+% task :compile do
+%   sh 'make'
+% end
+
+% task :test => :compile do
+%   sh 'cd test;rake;./calculator_fruit_driver'
+% end
+
+% load "rake_base.rb"
+% include RakeBase
+
+% task :default => [:test]
+% \end{verbatim}
+\item Create a rakefile in your \verb!test! folder
+\begin{verbatim}
+! rakefile in test folder
+
+\end{verbatim}
+\end{enumerate}
+
+{\bf This should be done for every module you want to test}: All test
+modules should be created inside the \verb!test! folder.
+\begin{enumerate}
+\item Create the test file in the test folder: Suppose that the module
+  file is \verb!calculator.f95!, then the test file should be
+  \verb!calculator_test.f90! (NOTE: .f90 is required for FRUIT).
+\begin{lstlisting}
+module calculator
+  implicit none
+contains
+  subroutine add (a, b, output)
+    integer, intent (in) :: a, b
+    integer, intent (out) :: output
+    output=0
+  end subroutine add
+end module calculator
+\end{lstlisting}
+\begin{lstlisting}
+-----------------------------------
+module calculator_test
+use fruit
+ 
+contains
+  ! setup_before_all
+  ! setup = setup_before_each
+  subroutine setup
+     ...
+  end subroutine setup
+ 
+  ! teardown_before_all
+  ! teardown = teardown_before_each
+  subroutine teardown
+    ...
+  end subroutine teardown
+
+  subroutine test_calculator_should_produce_4_when_2_and_2_are_inputs
+    use calculator, only: add
+    integer:: result
+ 
+    call add (2,2,result)
+    call assert_equals (4, result)
+  end subroutine test_calculator_should_produce_4_when_2_and_2_are_inputs
+end module calculator_test
+\end{lstlisting}
+
+\item Notice the structure of this test file: 
+  \begin{enumerate}
+  \item This test file is a module whose module name is the name of
+    the module needed to test plus \verb!_test!,
+    e.g. \verb!calculator_test!
+  \item it call \verb!USE fruit!
+  \item it needs a {\it setup} and a {\it teardown} subroutine to do
+    necessary initiate and clean up work for each test
+  \item then, you create each test procedure for each procedure in the
+    module needed to test. The name of the test procedure is
+    \verb!test_! plus the name of the source procedure.
+  \end{enumerate}
+
+% \item Finally, you need a driver program to call all these test
+%   modules. 
+% \begin{lstlisting}
+% program fruit_driver
+%   use fruit
+%   use calculator_test
+%   ! use all other test modules
+
+%   call init_fruit
+
+%   call test_calculator_should_produce_4_when_2_and_2_are_inputs
+%   ! call all test test procedures
+
+%   call fruit_summary
+% end program fruit_driver
+% \end{lstlisting}
+
+% This driver program has 
+% \begin{enumerate}
+% \item USE fruit, USE the test module,
+% \item call \verb!init_fruit!, 
+% \item call all necessary test procedure in the test module, 
+% \item call \verb!fruit_summary!.
+% \end{enumerate}
+
+%   {\bf IMPORTANT}: There are some steps can be done automatically.
+%   This driver module can be generated automatically with a
+%   {\it rakefile}
+
+% \item
+%   \textcolor{red}{From this step: you can choose an alternate option
+%     ``using rakefile''}. Here, you create your own makefile,
+%     e.g. \verb!test_makefile!
+
+% \item Compile and run the compiled driver module.
+
+% \item Whenever a new procedure is needed to test, you just repeat the
+%   same steps.
+\end{enumerate}
+
+{\bf Summary}:
+\begin{enumerate}
+\item Write your code, create a makefile
+% \item Create \verb!test! folder, put two fruit files inside the test
+%   folder and compile them.
+\item Create the \verb!test! folder, put two fruit files inside the
+  project directory.
+\item Adjust the content of the makefile.
+\item Create the rakefile in the test directory and update them when
+  new test module is available.
+\item Create all test modules, given them the extension .f90, not .f95
+  in the \verb!test! folder.
+\item Compile your source files with \verb!make test!
+\end{enumerate}
+
+% Some definition in \verb!rake_base.rb! by default.
+% \begin{verbatim}
+% $base_dir=Dir.pwd
+% $build_dir = "#{$base_dir}/build"
+
+% !compile
+%   sh "#{$compiler} -I#{$build_dir} -o #{$goal} #{OBJ} #{FruitProcessor.new.lib_name_flag($lib_bases, $build_dir)} #{FruitProcessor.new.lib_dir_flag($lib_bases, $build_dir)}"
+% \end{verbatim}
+% You should update the library information after the -I option by
+% adding the new information in the rakefile
+% \begin{verbatim}
+% $build_dir = "FruitProcessor.new.base_dir"
+% \end{verbatim}
+
+{\bf rakefile}: This is the default rakefile in the test folder, you
+can modify it if necessary. This rakefile to rake tool is similar to
+the makefile to make tool.
+\begin{verbatim}
+require 'rubygems'
+require 'fruit_processor'
+ 
+# include this if there is generated code in this dir
+FruitProcessor.new.pre_process
+ 
+# name of the generated driver
+$goal='calculator_fruit_driver'
+ 
+$lib_bases = {'fruit' => FruitProcessor.new.build_dir,
+  'calculator' => nil}
+ 
+task :default => [$goal, :deploy, :spec]
+ 
+task :gen do
+  FruitProcessor.new.pre_process
+end
+ 
+task :spec do
+  FruitProcessor.new.spec_report
+end
+ 
+#file ['calculator_test.o', 'module_b_test.o']  => '/users/chena/workspace/sourceforge_fruit/build/libfruit.a'
+#file 'calculator_test.o'  => '/users/chena/workspace/sourceforge_fruit/build/libfruit.a'
+ 
+load "#{FruitProcessor.new.base_dir}/rake_base.rb"
+include RakeBase
+\end{verbatim}
+\begin{itemize}
+\item You don't have to specify newly added module in the rakefile
+  unless you want to specify the build order
+\item By including RakeBase in the end, you include all the default
+  build targets specified in the \verb!<fruit>/rake_base.rb!
+\end{itemize} 
+
+{\bf FRUIT provides these subroutines}: The obsolete naming
+convention: \verb!assertName!, the new naming convention in FRUIT:
+\verb!assert_name!.
+\begin{enumerate}
+\item assert\_equals(a, b)
+\item assert\_not\_equals(a,b)
+\item assert\_true(a)
+\end{enumerate}
+
+\section{Something about rake and rakefile}
+\label{sec:someth-about-rakef}
+
+Rake is a mnemonic for ``ruby make''. It is a tool that help you build
+your source codes and is supposed to be better than make tool. Thus,
+rakefile is like makefile; however, it contains all executable Ruby
+code. Here are some basic components of a
+rakefile\footnote{\url{http://rake.rubyforge.org/files/doc/rakefile_rdoc.html}}
+
+It is more helpful if you are familiar with
+\hyperref[chap:make-tool]{makefile}. 
+
+\subsection{Task}
+\label{sec:task}
+
+This is the basic:
+\begin{verbatim}
+task: <name>
+\end{verbatim}
+with $<name>$ is any name.
+
+A task can has prerequisites, given in a list enclosed in square
+brackets following the name and an arrow \verb!=>!.
+\begin{verbatim}
+task: <name> => :prereq1
+  ! more than one dependency
+task: <name> => [ :prereq1, :prereq2 ]
+\end{verbatim}
+
+A task can has some actions, wrapped between the $do$ and $end$
+keywords
+\begin{verbatim}
+task: compile => [ :prereq1, :prereq2 ] do 
+   sh 'cd src; rake'
+end
+
+task: test => [ :prereq1, :prereq2 ] do 
+   sh 'cd test; rake; ./calculator_fruit_driver'
+end
+\end{verbatim}
+
+A default task to run when you invoke rake without any task name
+\begin{verbatim}
+task: default => [:test]
+\end{verbatim}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

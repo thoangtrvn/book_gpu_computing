@@ -1,0 +1,21 @@
+\chapter{Linux kernel support for CPU and GPU}
+
+\section{Linux kernel 4.14: Heterogeneous Memory Management}
+\label{sec:HMM-shared-memory-space-GPU-CPU}
+
+Heterogeneous Memory Management (HMM) has also finally made it into Linux. This
+feature enables GPUs and CPUs to access a process's shared address space. Both
+supercomputing and programs using parallel-processing languages and application
+programming interfaces (API) such as OpenCL 2.0, Nvidia's CUDA, and C++'s
+Parallel Algorithm Scheduling Library (PASL) will find this useful.
+
+\url{https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=bffc33ec539699f045a9254144de3d4eace05f07}
+
+Traditionally, a (GPU) driver expose dedicated memory allocation API through
+their device file, often relying on a combination of IOCTL and mmap calls.
+On the other hand, memory allocated using (malloc, mmap of a file, share memory,
+etc.) only accessible by CPU. 
+
+The only memory regions that are accessible by CPU and (GPU) drivers is known as
+{\bf pinned} memory. 
+

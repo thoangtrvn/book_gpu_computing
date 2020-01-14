@@ -1,0 +1,1555 @@
+\chapter{Lectures from VSCSE}
+\label{chap:lectures-from-vscse}
+
+
+
+\section{Desirable and Undesirable computing patterns}
+\label{sec:desir-undes-comp}
+
+% Convolution filtering (e.g. bilateral Gaussian filters)
+Change the data structure to more friendly vectorizing in GPU. 
+
+How to develop an efficient kernels? - the most time consuming step in
+GPU programming. 
+
+All threads in a grid run the same kernel code = SPMD (single program
+multiple data). However, each thread operate on its own data
+element. To tell on which memory address the thread to operate, each
+thread is given an index (computed from thread ID, block ID). 
+
+For scalable operations, threads are organized in a hierarchy
+structure: grid - thread blocks - threads. 
+\begin{itemize}
+\item threads in different blocks cannot cooperate
+\item threads in the same blocks cooperate via {\bf shared memory},
+  {\bf atomic operation}, and {\bf barrier synchronization}.
+\end{itemize}
+
+In CUDA 3.x, multiple kernels from a single program can run at the
+same time. 
+
+In CUDA 4.0, multiple kernels from different program can run at the
+same time. 
+
+Previously, only thread block can be of 1D, 2D, or 3D of threads; and
+grid can be 1D, and 2D of blocks.  From CUDA 4.0, grid can be in 3D of
+blocks. 
+
+In some applications (N-body simulation, ...) we often see sequential
+code and parallel code run at the same time. 
+
+Typically, one thread is mapped to 1 pair of input and 1 output.
+
+
+IMPORTANT: Avoid conflict in critical resources:
+\begin{itemize}
+\item conflict parallel update to memory locations 
+\item off-chip DRAM (global memory) bandwidth (TUAN: what is the
+  conflict here???)
+\end{itemize}
+
+\section{Massive parallelism}
+\label{sec:massive-parallelism}
+
+Massive parallelism doesn't have to be regular, i.e. the data access
+pattern can be non-regular. However, to maximize the throughput, data
+access pattern should be regularity.
+
+Example: In a wedding, food are serviced the same no matter the guests
+like it or not. This guarantee a quick processing and organized (large
+and high throughput); not by guests individual requests. So,
+regularity is important for high throughput. 
+
+In parallel processing, there's always a huddle (bottle neck). So, we
+need to maintain load balance.
+
+
+How to define the model with regularity in data access pattern. How to
+define a model to balance the load between threads to avoid bottle
+neck issue. This requires a good understanding of the application
+domains; the strength and limitations of the computational devices;
+and a good algorithm design of the problem.
+
+Atomic operations is the bottle neck that should be avoided. However,
+in certain problems, we need to use atomic operations, e.g. sum
+reduction of an array. In the example of sum reduction, typically the
+last sum of 16 or 32 threads are sequential as this cannot be
+avoided. 
+
+\section{Tiling and blocking}
+\label{sec:tiling-blocking}
+
+Sipping water from a glass is limited by the straw which represent the
+memory interface. As a result, we want to maximize the reuse of the
+data we read in, before sipping the next amount of water, or reading
+in the next amount of data. 
+
+
+\subsection{Registers}
+\label{sec:registers}
+
+Access registers is part of the instruction, i.e. it doesn't require
+memory access instruction. So, by using registers to access the data,
+we can reduce the number of binary instructions. However, registers
+are private per thread. So, we cannot share data between threads using
+registers. However, if different a single thread access data 
+
+
+
+\subsection{Kernels}
+\label{sec:kernels}
+
+All parameters passed by reference to the kernel should point to
+global memory on device. In CUDA Fortran, data is passed by reference
+by default. So, to pass by value, you use \verb!VALUE! keyword. 
+
+
+Any call to a kernel function is asynchronous from CUDA 1.0 on,
+explicit synch needed for blocking.
+
+In CUDA C, a kernel function use \verb!__global__! attribute and must
+return ``void'' to be callable from host. Otherwise, it must be called
+from another kernel, and use \verb!__device__! attributed.
+
+
+A \verb!__device__! and \verb!__host__! can be used together. In such
+cases, 2 copies will be created; one to run on CPU and one to run on
+GPU.
+
+
+
+
+
+
+\section{Common algorithm techniques to convert from an undesirable one to a desirable one}
+\label{sec:comm-algor-techn}
+
+Check the website: 
+\url{http://courses.engr.illinois.edu/ece598/hk/}
+
+\section{Sparse matrix processing}
+\label{sec:sparse-matr-proc}
+
+\section{Blocking/Tiling locality}
+\label{sec:block-local}
+
+the idea is to reuse the fetched data from global memory as many times
+as possible. 
+\begin{itemize}
+\item If the data is reused within a single thread, it's called {\bf
+    register tiling}. (Optimization 1)
+\item If the data is reused across threads, the data is loaded into
+  shared memory blocking. 
+\end{itemize}
+It's similar to car pool, where moving multiple people in a single car
+(or single thread) is important to improve the efficient. In real
+life, people go for car pool should have similar schedule, working at
+nearby companies. Similarly, a thread load a group of data should
+process using the same operations on these data, and these data should
+locate nearby to each other. 
+
+So, we typically move the block/tile of data from the global memory to
+the shared memory (on-chip memory). It's important to control the
+working of two threads that use the same on-chip memory to make sure
+it's roughly the same. In addition, the matrix can be very large, so
+it's typically divide the matrix into blocks or tiles of small size
+enough so that the whole tiles can be loaded into on-chip
+memory. Typically, the size is 16x16 or 32x32. This is also the same
+size as the size of a thread block. This maps perfectly to each thread
+block to process one tile; where one thread process one element in the
+tile. 
+
+If we do matrix multiplication, we need two tiles, on on-chip memory,
+to load the two tiles from 2 matrices. Here, we not only don't avoid
+memory accesses; but also creates more memory accesses. However, it
+switches from low high-latency memory access; to multiple fast
+low-latency memory access; and thus increasing the performance. 
+
+To make sure all threads already load the data from global memory to
+the shared (on-chip) memory, we need to synchronize them using
+\verb!__synchthreads()!. This will guarantee all threads can access
+data from the shared memory successfully. We also need to call this to
+make sure all the elements in the tile are consumed, i.e. before we
+load new data to the shared memory, we need to make sure all threads
+have used what they need from the on-chip memory to complete their
+job.
+
+
+Tiling is not only used to avoid low bandwidth memory access; but also
+to improve coalescing memory access pattern, i.e. to help neighboring
+threads access neighboring elements
+
+
+
+Slide 34: Put more pressure on thread by using more registers per
+thread. 
+
+The typical number of M (vertical) is 64 or more; and load into
+registers. The typical number of N (horizontal) is 16 or more and load
+into shared memory.
+
+However, instead of loading a small segment (single line or column) of
+M and N; they load a small rectangle of M and N. The size of the
+rectangle is \verb!Width_N x K! with K is set so taht
+\verb!Width_M = Width_N * K!; so each thread loads
+\begin{itemize}
+\item one element form N 
+\item K elements from M 
+\end{itemize}
+So, combining register tiling and shared memory tiling to balance the
+load; it can improve the matrix multiplication dramatically. 
+
+
+\section{Lab 1: 7-point stencil}
+\label{sec:test-7-point}
+
+
+\subsection{Optimization 1}
+\label{sec:optimization-1}
+
+Data reuse: saving loaded data into registers
+
+
+\subsection{Optimization 2}
+\label{sec:optimization-2}
+
+Data reuse: each thread compute multiple outputs to increase data
+reuse. 
+
+
+\section{Scalability}
+\label{sec:scalability}
+
+Tiling techniques work well with matrix multiplication and especially
+with dense matrices. 
+
+Here, we learn how parallelism can be scaled, i.e. how you turn things
+around to make it much more scalable, more parallelable (increasing
+scalability). 
+
+{\bf Common sequential pattern}: Using a double nested loop to iterate
+all input to produce output, i.e. the inner loop iterate all input to
+produce one output element. The outer loop to iterate through all
+output elements. The complexity is O(MN).
+
+An example is in MRI image, with M is \# scan points, N is \#
+regularized scan points.
+\begin{lstlisting}
+for (m=0; m< M; m++) {
+   for (n=0; n< N; n++) {
+     out[n] += f(in[m], m,n);
+   }
+}
+\end{lstlisting}
+
+In the most accurate sense, all input points should affect to some
+extent to the output points (the above example). However, practically,
+it's too expensive. So, we come to a more relaxed model:
+{\bf scatter parallelization} (Sect.~\ref{sec:scatt-parall}). A better
+approach is {\bf gather parallelization}
+(Sect.~\ref{sec:gath-parall}).
+
+However, in practice, scatter parallelization is often used than
+gather. The reason is that, in practice, each element does not affect
+all output elements. In addition, output tends to be more more regular
+(in matrix form, uniformly distributed), than input (which can be in
+any form, or unregular ``distance'' or skewed).
+
+%With scatter: easy thread kernel code,  and harder to calculate 
+
+
+\subsection{Scatter parallelization}
+\label{sec:scatt-parall}
+
+A bunch of threads, each one to work with a single input element, and
+make contribution to all outputs. However, the problem is all threads
+having conflict updates to the same output elements. One solution is
+to use atomic operations for update when only one can update at a
+time. The order of update is unknown at compile time. This, however,
+very costly and slow.
+
+Summary: even though the processing state is parallelized. The final
+stage, updating, is still serialized. So there is not much enhanced.
+
+NOTE: A load-modify-store operation has 2 full memory access delays.
+\begin{itemize}
+\item A DRAM delay to read one element (not to mention taking one
+  element is waste the bandwidth). Thousands of cycles on global
+  memory. On shared memory, it cut down the latency (tens of cycles),
+  but still serialized. Using shared memory, atomic operations is
+  private to each thread block. As a result, we need algorithm work by
+  programmers to make proper update to data in global memory.
+
+  On Fermi, it use L2 cache for atomic operations, which give medium
+  latency, and global to all blocks. It relax programmers effort; yet
+  its still serialized. A variable is put in cache when there are many
+  threads accessing (read or update) to that variables. This reduces
+  the latency, than accessing them on global memory. In the end,
+  serialization is unavoidable. 
+\end{itemize}
+
+A better approach is {\bf gather parallelization}
+(Sect.~\ref{sec:gath-parall}).
+
+\subsection{Gather parallelization}
+\label{sec:gath-parall}
+
+Here, instead of parallelize the input processing, we parallelize the
+output update, where each thread update one output element; rather
+than processing one input element like scatter parallelization does. 
+
+So, each thread read all input elements, and do proper calculation to
+update one output element. 
+
+\subsection{Example: Direct Coulomb Summation (DCS) algorithm}
+\label{sec:exampl-direct-coul}
+
+If we assume all input elements affect output elements. At each
+lattice point, the potential is
+\begin{lstlisting}
+potential += charge[i] / (distance to atom[i])
+\end{lstlisting}
+
+In 3D, we go through each z-slice, i.e. all the grid points on a slice
+have the same z-coordinate. 
+
+Slice 20: good C sequential code
+\begin{itemize}
+\item loop 1: iterate z-slices. All grid points have the same
+  \verb!dz!, so they are calculated once.
+
+\item loop 2: iterate y coordinate. All grid points on the same
+  z-slice have the same \verb!dy!, so they are calculated once.
+
+\item loop 3: iterate x coordinate
+
+\end{itemize}
+Here, the input is very regular, i.e. \verb!dz,dy! are calculated
+once. However, it's not a good algorithm to run on GPU. In practice,
+we don't have that regular input. For example: atoms come from modeled
+molecular structures (irregularity by necessity).
+
+\subsubsection{Simple (straightforward) CUDA parallelization}
+\label{sec:simple-stra-cuda}
+
+At first, as CPU memory is larger than GPUs, we allocate whole
+potential map on host CPU, and shift each z-slice to GPU for
+processing. As a result, we know the \verb!dz! of the slice, so we can
+precalculate it on CPU. In the kernel, it does the update jobs for
+that slice. And iterate the process for every z-slice. 
+
+Each thread compute the contribution of an atom to all grid point (of
+the current z-slice). So, the index of the thread is mapped to the
+index of the atom to process.
+
+Again, at each grid point, it receives multiple updates from different
+atoms; and serialization is required, or atomic functions need to be
+used. There is no effective and non-buggy atomic operations for
+floating serialization. However, we know that at CUDA 4.0, atomic
+addition works.
+
+\subsubsection{A better CUDA parallelization (based on less efficient C sequential code)}
+\label{sec:bett-cuda-parall}
+
+Slide 29: it's output oriented, by using outer loop for grid points,
+and inner loop to iterate all atoms. However, this works better on
+GPU where serialization is avoided. 
+
+One important thing: there are two options
+\begin{itemize}
+\item IF inside the kernel, to check if the thread correspond to an
+  element inside the boundary of the matrix.
+\item Using padding to guarantee all threads has data to do. This is necessary to align memory. 
+\end{itemize}
+
+\textcolor{red}{CUDA 4.0 support better tiling of non-aligned memory;
+  as many people want to avoid data padding. As padding can consume
+  resources. CUDA 4.0 is better tolerance to non-aligned data.}
+
+Here, the index for the thread is mapped to the index of the grid (the
+coordinate of the output element). 
+
+QUESTION TO ASK YOURSELF ALL THE TIME: Is it parallel? if yes, is it
+more efficient than sequential code?
+
+``Numbers really matters for a good engineer'' (Weimen-Hu).
+
+Issues:
+\begin{enumerate}
+\item Each thread, however, do redundant work; and
+\item energygrid[] is very large array, typically 20x or more larger
+  than atom[]
+\item in modern CPU, cache effectiveness is often more important than
+  compute efficiency. So, with large array, chance of cache misses
+  increases; which may deteriorate the performance. 
+\end{enumerate}
+
+So, a good fast sequential code is to use 3 different array, dz array,
+dy array and atom array, which is totally 3/20 of the energygrid[]
+array. These 3 matrices typically fit to the cache, and thus work more
+efficient. So, the matter here is numbers (the size). 
+
+Tiling the energygrid[] array can be a working solution; yet requires
+more programming efforts. 
+
+
+L1 cache is non-coherance (no shared). Data will not go to L1 cache
+unless it is constant. Shared data go to L2 cache. There is no private
+copy between L1 and L2. So, because of the share nature, we may not
+need to use L1 cache in some applications. 
+
+\subsection{Scatter 2 Gather transformation}
+\label{sec:scatter-2-gather}
+
+Even though Gather works better on GPU; it faces a problems of input
+irregularity.  Input tend to be much less regular. So it takes time
+for each thread to locate relevant input data to process.
+\begin{itemize}
+\item In a naive implementation, each thread loop through all input
+  data to look for what it needs. This is the example of electrostatic
+  potentials (Sect.~\ref{sec:lab-2:-binning})
+  
+  This make execution time scale badly with data size.
+
+\item A better one, define the bins where it looks for. For those out
+  of the bins, put them in an extra array and process them on CPU. So,
+  a ``cut-off'' value is define for each grid point of the energy grid
+  matrix. Only atoms within this radius is considered contributing
+  energy to the center grid point. 
+\end{itemize}
+
+
+\subsection{Lab 2: binning with uniform}
+\label{sec:lab-2:-binning}
+
+
+\subsubsection{The problem: electrostatic potential map}
+\label{sec:probl-electr-potent}
+
+Calculate electrostatic potential map: a regularly spaced lattice
+points in a space containing  the summed potential contributions from
+the atoms. The location of the atoms are assumed uniformly
+distributed. 
+
+An example show in 2D
+\begin{verbatim}
++     +    +     +
+   *     * 
++     +    +  *  +
+      *  
++  *  +  * +     +
+\end{verbatim}
+with + denotes the energy point to calculate and * represent the
+atoms. Size of * is very large compare to number of atoms. 
+
+
+Binning is a technique to help solve the problem on GPU and CPU
+efficiently. It groups data in chunks called {\bf bins}. This bring
+greatly efficient for huge data. E.g.: in ray tracing, KD-tree (a kind
+of non-uniform sized bins that divide a scene into multiple bounding
+boxes to group polygons close to each other. So polygons inside a
+bounding box can be ignored if have no chance of colliding with a ray
+being traced).
+
+\begin{framed}
+  So, for each tile of grid points, first identify the set of atoms
+  that need to be examined to calculate the energy at grid points in
+  the tile.  Atoms data are grouped into chunks called {\bf
+    bins}.
+  Generally, each bin collectively represent properties of input data
+  points in the bin. E.g.: bins represent location properties of
+  atoms.
+
+  The bins can be uniform bin arrays, variable bins, or KD-tree
+\end{framed}
+
+
+Atoms are assumed as point charge, with a fixed partial charge $q_i$,
+at a given coordinate (x,y,z). Electrostatic potential V is closely
+related to electrostatic force and interaction energy between atoms
+and is expressed as a sum of contributing from all N atoms.  An exact
+Coulombic potential function (calculate contributions from infinite
+distances) requires huge computing demand. So, a working approach is
+to use an approximate function which is composed of 2 parts:
+\begin{enumerate}
+\item component 1 calculates the exact contribution from atoms of a
+  given range (short-range or cut-off potential)
+\item component 2 calculates the approximate contribution form atoms
+  out of that range (long-range potential).
+\end{enumerate}
+
+This example tell how to calculate the first component on GPU, which
+is based on a predefined ``cut-off'' threshold. 
+
+\subsubsection{The fixed binning method}
+\label{sec:binning-method}
+
+So, the simulation volume of 3D grid can be defined into a number of
+same size cubes (i.e. uniform bins or fixed bins) with a maximum
+number of atoms the bin can contains. This is known as the capacity of
+the bin. Also we assume the atoms are uniformly distributed in the
+simulation volume. Then the number of atoms in each bin is almost
+equal. Nevertheless, some bins may have no atoms and some cannot
+contains all the atoms due to fixed capacity.
+\textcolor{red}{Why don't we increase capacity so that it always hold
+  all atoms? - Answer: we don't want it to big as it will waste memory
+  space; and not very useful}.
+So, in the latter case, we need to put the out-of-capacity atoms into
+an extra list for sequential processing on CPU. 
+
+So, the initial configuration of binning is the size and capacity of a
+bin. \textcolor{red}{The first important issue here is the choice of
+  bin capacity}. Using a uniform and fixed capacity bins allow us
+using array implementation. 
+
+
+{\it Extended simulation volume}: Padding elements are added to the
+surrounding volume to make the computation more regular around the
+edges of the simulation volume. The size of the padding is equal to
+the ``cut-off''. Also, the bounding cube is used, rather than a sphere
+for the search space of the output grid point which is defined by the
+``cut-off'' radius. NOTE: Using cube, rather a sphere, some more atoms
+may be included in the neighbor lists although their distances to the
+center grid point is longer than ``cutoff'' value. As a result, they
+will be examined by each thread, yet not used.
+
+
+
+So, the idea: 
+\begin{enumerate}
+\item BINNING PROCESS: divide the extended simulation volume into
+  non-overlapping uniform cubes
+\begin{verbatim}
+sol_create_uniform_bin(grid, num_atoms, gridspacing, atoms, cutoff);
+\end{verbatim}
+  given \verb!grid! array of energy grid, and numatoms, and
+  gridspacing, and pointer to array of atoms of (x,y,z,p), and cutoff value.
+
+\begin{verbatim}
+BIN_LENGTH = cube size in x,y,z (the bigger the size, the more atoms
+                                 will fall into each bin)
+  we don't want to use too large BIN_LENGTH (which may cause 
+  bin overflow or over-allocate memory space)
+BIN_INVLEN = just inversion of BIN_LENGTH
+
+BIN_DEPTH = bin capacity
+\end{verbatim}
+depending on the cutoff value, we may need one or more cube on each
+size of the simulation volume. So, the dimension of the extended
+simulation volume is
+\begin{verbatim}
+2*c + lnx * gridspacing / BIN_LENGTH
+\end{verbatim}
+with 
+\begin{verbatim}
+c = cutoff / BIN_LENGTH = cutoff * BIN_INVLEN
+\end{verbatim}
+is the number of additional bin on each side of each dimension. 
+
+\textcolor{red}{Each bin has a unique index in the simulation space
+  for easily parallel processing}, i.e.  \verb!bincntBaseAddr!.
+  \verb!bincntZeroAddr! = point to the length of starting point of a
+  bin that are in the simulation volume.
+
+
+\item Build the neighborlist for each output grid point: which is the
+  list of all neighboring atoms under the limit of capacity (a list of
+  neighbor offsets), and a list of extra atoms to be processed on CPU
+\begin{verbatim}
+sol_create_neighbor_list(gridspacing, cutoff);
+\end{verbatim}
+
+Both calculation on CPU and GPU can be done at the same time.
+
+\item calculate the energy using bins and neighbor list
+\begin{verbatim}
+sol_calc_energy_with_bins( energygrid, grid, atoms, num_atoms, 
+       gridspacing, cutoff, k); 
+calc_extra(energygrid, grid, gridspacing, cutoff, k);
+\end{verbatim}
+
+  \begin{itemize}
+  \item kernel: iterate through output grid
+    \begin{enumerate}
+    \item for each grid point, identify the neighboring atoms from the
+      ``cut-off'' threshold
+\begin{verbatim}
+dist = |p.loc - atom.loc|
+p.energy += atom.q/dist*s(dist //s(dist)
+\end{verbatim}
+    \end{enumerate}
+  \item CPU: iterate through output grid
+    \begin{enumerate}
+    \item for each grid point, identify the extra neighboring atoms and
+      update the contribution
+\begin{verbatim}
+dist = |p.loc - atom.loc|
+p.energy += atom.q / dist * s(dist)
+\end{verbatim}
+    \end{enumerate}
+    
+  \end{itemize}
+\end{enumerate}
+
+
+The energygrid is organized in 1D form, though it's logically a 3D
+array (grid.x,grid.y,grid.z). So the size is 
+\begin{lstlisting}
+allocate(energygrid(grid.x * grid.y * grid.z))
+\end{lstlisting}
+
+The intermediate array which correspond to a z-slice of energy grid is
+\verb!grid!. For generality, we use \verb!volume3i! with z=1.
+\begin{lstlisting}
+typedef struct {
+  int x;
+  int y;
+  int z;
+} voldim3i;
+\end{lstlisting}
+
+An array of atoms with full information for each is organized as a
+pointer array
+\begin{lstlisting}
+coordinateatoms[4 * n + 0] : x
+coordinateatoms[4 * n + 1] : y
+coordinateatoms[4 * n + 2] : z
+coordinateatoms[4 * n + 3] : q (charge)
+\end{lstlisting}
+with $0 < n <$ number of atoms (numatoms). For a uniform lattice grid,
+a single value is used to tell the grid spacing \verb!gridspacing!
+\begin{verbatim}
+./parboil run cp 1 uniform
+.......................
+mkdir -p build/1_default
+gcc  -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include  -c s
+rc/1/main.c -o build/1_default/main.o
+gcc  -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include  -c s
+rc/1/cenergy.c -o build/1_default/cenergy.o
+gcc  -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include  -c /
+home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/src/parboil_cuda.c -o build/1_default/parboil_c
+uda.o
+/usr/local/cuda/bin/nvcc build/1_default/main.o build/1_default/cenergy.o build/1_default/pa
+rboil_cuda.o -o build/1_default/cp -L/usr/local/cuda/lib64 -lm -lpthread -lm
+** waiting for 1420508.acm to finish...
+
+** done. 178.0 seconds.
+Set compute mode to EXCLUSIVE_PROCESS for GPU 0:1E:0.
+Resolving CUDA runtime library...
+        /usr/local/cuda_wrapper/lib64/cuda_wrapper.so (0x00007f4ab30e7000)
+        libcudart.so.4 => /usr/local/cuda/lib64/libcudart.so.4 (0x00007f4ab29d6000)
+CUDA accelerated coulombic potential microbenchmark
+Original version by John E. Stone <johns@ks.uiuc.edu>
+This version maintained by Chris Rodrigues
+IO        : 2.025272s
+Compute   : 140.956296s
+Timer Wall Time: 142.981598
+Pass
+Parboil parallel benchmark suite, version 0.2
+\end{verbatim}
+
+Enhancement 2.1: using binning algorithm
+\begin{verbatim}
+Length of neighborhood bins list: 343
+IO        : 1.599365
+Compute   : 7.377883
+Timer Wall Time: 8.977266
+\end{verbatim}
+
+
+
+
+\subsubsection{Bin sizes - large bins}
+\label{sec:bin-sizes}
+
+The second issue is the bin size, i.e. how big of the bins. 
+\begin{enumerate}
+\item A large bin contains many dummy (unused atoms)
+\item A too small bin may not be able to contain the adequate amount
+  of atoms (specified by bin capacity)
+\end{enumerate}
+
+
+{\bf The large bin concept} is that a single bin is used to calculate
+the potential energy for grid points in a block.  Consider a 3D region
+processed by a thread block. This is known as the {\bf map region}, a
+3D thing. Each thread calculate the potential at the corresponding
+grid point. A cut-off sphere being used that can cover the whole map
+region. Then create a larger bin to cover the cut-off sphere. This
+large cube will be used as the bin. 
+
+\begin{framed}
+  A typical cutoff distance in molecular structure is 8-12$\AA$; and
+  long-range potential can be calculated separately using an
+  approximate formula.  The number of atoms within a cutoff distance
+  is relatively constant (with uniform atom density), e.g. 200-700
+  atoms within 8$\AA$ to 12$\AA$ cutoff sphere for typical molecular
+  structures.
+\end{framed}
+
+So, if using cutoff radius as 12$\AA$, the diameter of the cutoff
+sphere is 24$\AA$ or the large cube should be of size $(24\AA)^3$ to
+hold the sphere. Using large bin concept, each map region requires
+only a single bin of atoms. 
+\begin{enumerate}
+\item For each map region, atoms in the large bin are copied to the
+  constant memory (until full), then launch the kernel.
+
+\begin{lstlisting}
+static __constant__ float4 atominfo[MAXATOMS];
+\end{lstlisting}
+
+  NOTE: Atoms can be shipped to 64KB constant memory.
+
+
+\item Then in the kernel launch (loop through atoms in the copied
+  constant buffer, check if the atoms within the cutoff distance)
+\begin{lstlisting}
+__global__ static void mgpot_shortrng_energy(...) {
+[...]
+    for (n = 0; n < natoms; n++) {
+       float dx = coorx - atominfo[n].x;
+       float dy = coory - atominfo[n].y;
+       float dz = coorz - atominfo[n].z;
+       float q = atominfo[n].w;
+       float dxdy2 = dx*dx + dy*dy;
+       float r2 = dxdy2 + dz*dz;
+  if (r2 < CUTOFF2) {
+    float gr2 = GC0 + r2*(GC1 + r2*GC2);
+    float r_1 = 1.f/sqrtf(r2);
+    accum_energy_z0 += q * (r_1 - gr2);
+  }
+}
+\end{lstlisting}
+
+\end{enumerate}
+Using radius 12\AA, we have a cube of 24x24x24. Using lattice of size
+\verb!gridspacing=0.5!$\AA$, the map region correspond to $48^3$
+lattice points, and each bin contains $20^3$ atoms on average, which
+is quite big. However, a quick and dirty implementation increase 6x
+performance.  Can it be improved? YES - as only 6.5\% of the contained
+atoms are really used, i.e. within the cutoff distance.
+
+Here, bin size and bin capacity are designed to allow each kernel
+launch cover enough lattice points to justify the kernel launch
+overhead and fully utilize GPU hardware.
+
+\subsubsection{Bin sizes - small bins}
+\label{sec:bin-sizes-small}
+
+
+
+So, to have a much more accurate atoms in the bins, we need to do more
+work on binning function.
+
+How-about using small-bin kernels? So, instead of using a single
+24x24x24 bin, each thread block deal with a number of 4x4x4
+bins. Here, all threads in a block scan the same bins and atoms
+
+
+The
+small bins, however, need to be large enough to cover all the atoms at
+the corner of the sphere. However, there are bins at the border that
+some will be used, some will be not. So there's still small
+divergence.
+
+
+
+{\bf Neighborhood offset list}: from the center grid point, keep a
+list of offset to the bins that are within the cutoff distance. So, by
+visiting the bins in the neighborhood offset list, we can iterate
+through atoms in that bin.
+
+For small bin design: e.g. 0.5$\AA$ lattice spacing, then a $(4\AA)^3$
+cube is a 8x8x8 potential map points. This requires 128 threads per
+block (i.e. 4 points/thread). Then, 34\% of examined points are within
+cutoff distance. So, we improve the true-positive detection
+rate. Small bins can also be used as tiles for locality. 
+
+Typically, the CPU run the most sequential part of the execution; and
+the GPU run the most parallel part of the execution. However, in this
+case, and some other cases, the CPU process part of the parallelize
+part that is too much irregular that may downgrade the performance if
+run on GPU. So, this can bring a better performance.
+
+
+\subsubsection{At first, the data is assumed to be uniform.}
+\label{sec:at-first-data}
+
+
+
+
+
+
+What is the input data is non-uniform (i.e. irregular).
+
+\section{Sparse data}
+\label{sec:sparse-data}
+
+Sparse matrix-vector multiplication is a big issue. Example: a system
+of ten thousands equations, in which each contains a small number of
+variables. The two main issues: (1) the sparse matrix is very
+unregular (compression can be used to map the matrix to regularity);
+(2) memory bandwidth (we cannot use input sharing like in dense
+matrix, as in every row only a few is being used).
+
+\subsection{CSR (compressed sparse row)}
+\label{sec:csr-compr-sparse}
+
+Move the element by removing the zero elements, and keep an index
+array to tell the exact location of the moved non-zero elements. 
+
+Slide 6: for \verb!ptr! (row pointer) if we see two consecutive
+values of the same value, then there is an empty row. That empty row
+correspond to the preceding value. 
+\begin{verbatim}
+data[7] = {3, 1, 2, 4, 1, 1, 1}
+
+ptr[5] = {0, 2, 2, 5, 7}
+\end{verbatim}
+the second row start at the second element of `data' array; and since
+there is no non-zero elements on that row; the third row also start at
+the second element of `data' array.
+
+The data elements doesn't move, we just use some special index.
+
+\subsection{ELL}
+\label{sec:ell}
+
+We no longer need the \verb!ptr! array, but we still need the column
+index array. Rows of the same length can be grouped 
+
+Then by transposing the matrix, each thread process each column,
+rather than a row (in C). So, neighboring thread access adjacent data
+elements. This will give more coalesced memory access. 
+
+\subsection{COO}
+\label{sec:coo}
+
+
+\subsection{Hybrid format}
+\label{sec:hybrid-format}
+
+For GPU, there is a high chance of sparse package nowadays use a
+hybrid format, with ELL handles typical entries and COO handles
+exceptional entries (implemented with segmented reduction). 
+
+This is similar the concept of binning where extra atoms are put to a
+separate array. This is one of the few ways that can help regularizing
+data. 
+
+\subsection{JDS}
+\label{sec:jds}
+
+Sort rows of increasing number of non-zero elements. We can use JDS
+and Hybrid to launch multiple kernels. 
+
+\subsection{Variable Binning }
+\label{sec:variable-binning-}
+
+
+Using variables bins can have a compressed data structure. It looks
+like CSR
+
+Do a scan first (on CPU) to see how large we need (capacity) for each
+bins. If we do on GPU, we need to use atomic operations to increase
+the increment count for each bin. 
+
+But what we need is where should each bin begin in the linear
+iteration. So, we need to find the cumulative sum to keep the index of
+the beginning location of each bin. On GPU, we can use parallel prefix
+scan operations of the bin capacity array to generate an array of
+starting points of all bins (CUDPP package). 
+
+For the compact bins, give the 
+
+
+In the N-body simulation, where the atoms move after each
+iteration. In this case, the input is not stationary. So, binning
+algorithm becomes very tricky. We may need to rebuild the bins; or
+brute force approach need to be used. Or use a large enough bins so
+that we don't have to rebuild the neighbor list after every time
+step. 
+
+
+% \section{Debug}
+% \label{sec:debug}
+
+\section{Privatization}
+\label{sec:privatization}
+
+Privatization is used when:
+\begin{enumerate}
+\item the number of outputs is small compared to input, e.g. sum reduction
+\item the number of outputs cannot be statistically allocated,
+  e.g. histogram is a scatter operation whose output is not static. 
+\end{enumerate}
+A good queue structure can support highly efficient extraction of
+input data from bulk data structures.
+
+Example: 1+2+...+10 can be done in parallel for 2 chunks
+\begin{verbatim}
+1+2+..+5 and 6+...+10
+\end{verbatim}
+In reality, when applying in floating-point number, order of additions
+of different chunks can give different results on computer; due to
+numerical issue. The order of execution related to associativity and
+commutativity. This is true with simple addition, but in other
+operations or even addition between very small and very large numbers;
+it's not always the case.
+
+
+For histogram, each thread creates its own chunk of output; so it
+knows only it get access and modify it. This continues until there's
+only a small enough number of chunks to be process by a single thread
+to combine them. Thus, at each phase of computation, it need to
+dynamically determine and extract from a bulk data structure. This is
+a hard problem when the bulk data structure is not designed/organized
+for massively parallel execution, e.g. graph. 
+
+
+The current CUDA model is to launch a kernel which create a bunk of
+blocks, each block with a bunch of threads. Once it's launched,
+there's no way to change it; nor changing the amount of data it
+process. This make it's hard to deal with dynamic data with current
+CUDA/OpenCL kernel configuration. 
+
+
+In addition, new generation of GPU add new features. Thus, it's
+supposed that there's a change in strategies of algorithm which make
+the algorithm hard to be generalized to any hardware architecture. So,
+you first need to understand the fundamental design first. 
+
+\subsection{BFS}
+\label{sec:bfs}
+
+In Bread-First Search, suppose you start with a ``frontier''
+vertex. And start searching to build a tree. You create a queue, where
+you put the frontier vertex here; and remove the old one, add the new
+ones when a new level is reached. So, the vertex on the same level are
+done in parallel. 
+\begin{verbatim}
+level 1: s
+level 2: r, w
+level 3: v, t, x, 
+level 4: u, y
+\end{verbatim}
+So, we need one GPU kernel for one level, and the size at each level
+is known. By doing so, the  kernel configuration can be determined
+before the kernel launch. The complexity is O(V+E).
+
+BFS can be used in VLSI CAD.
+
+
+
+Node-oriented parallelization: each thread assign to a node; so
+there's a large number of thread if there's a large number of
+nodes. Each thread examines all the neighbors of the node in the
+graph; and determine which node will be a frontier in the next
+phase. As every thread look at all edges; doing brute-force, so the
+complexity is O(VL+E) with V = number of vertex, L = number of
+edges. This is higher than O(V+E).
+
+
+Matrix-based parallelization: for sparsely connected graphs, then the
+connectivity matrix will be a sparse matrix. The complexity is
+O(V+EL). This is slower than sequential for large graphs. 
+
+
+Two-level hierarchy: Why don't splitting the large queue into smaller
+queue, each thread will write to its queue; and there is no contention
+of using atomic operation for writing data. In addition, if the queue
+is small enough, we can put them into share memory. This is the idea
+of {\bf parallel insert-compact queues}; each queue has a fixed-size
+capacity. In the end, put these local-queues' data back into the
+global big queue.
+
+Each thread processes one or more frontier nodes: it find the index of
+the new frontier node; (privatization process:) build the queue of the
+next level for this node. The actual number of data elements to be
+stored in each queue is unknown. So, atomic write is needed to make
+sure the first thread block write say 5 elements (from 0-4), but the
+second thread block may need 10 elements (so it need to wait for the
+thread block to finish writing to know that it starts at location 5). 
+
+
+Three-level hierarchy: if we further split the local b-queue into
+smaller queue (w-queue) to match the size of the w-queue match the
+number of hardware unit for writing at the same time, e.g. half-warp
+in Tesla or full-warp in Fermi. So w-queue means warp-queue; and
+b-queue means block-queue. Each thread in a warp write to the same
+w-queue. And then assemble all w-queues in the block to b-queue using
+atomic operations; and finally assemble all b-queues into the global
+g-queue using atomic operations. However, we cannot control which
+thread blocks write data back first to the g-queue. So, the ordering
+in g-queue changes at every run-time.
+\textcolor{red}{This as a result not a working solution for sorting}.
+
+
+Using privatized queue, shortest path for regular graph achieves good
+speedup 6-10x.  There are also many other (free-form) graph algorithm
+that we still haven't a good parallel algorithm on GPU due to load
+imbalance.
+
+
+
+\section{Page-locked memory}
+\label{sec:page-locked-memory}
+
+\begin{verbatim}
+- check return code from calls to mlock() , mmap() ...
+- getrlimit() 
+- ulimit -a   # shell
+- inspect /proc/meminfo
+\end{verbatim}
+
+
+\section{Parboil}
+\label{sec:parboil}
+
+\begin{itemize}
+\item A framework of scripts and libraries to compile, execute and
+  verify of codes
+
+\item A benchmark suite of GPU-accelerated codes
+\end{itemize}
+
+The Parboil principles:
+\begin{enumerate}
+\item ``peak'' performance on different devices require
+  architecture-specific tuning
+\item meaningful implementation should leverage knowledge of
+  characteristic input
+\item 
+\end{enumerate}
+
+Parboil currently have these operations implemented with ``best seed''
+possible. You can compare your code with these results
+\begin{enumerate}
+\item Dense matrix-matrix multiplication
+\item MRI-Gridding
+\item MRI-Q
+\item Two-point angular correlation function
+\item Lattice-Boltzmann method (lbm)
+\item Stencil (iterative 7-point 3D stencil)
+\item Bread-First Search
+\item Sum of absolute differences
+\item Sparse matrix-dense vector multiplication
+\end{enumerate}
+
+In Parboil, you can use the Makefile
+\begin{verbatim}
+LANGUAGE=cuda  ; or ccp
+APP_CUDACFLAGS =--use_fast_math
+APP_LDFLAGS=lm -lstdc++
+SRCDIR_OBJS=file.o main.o
+\end{verbatim}
+
+
+To benchmark, it runs a number of simulation and save the time
+information. 
+\begin{lstlisting}
+for (t = 1; t <= num_trials; t++) {
+   pb_SwitchToTimer(&timers, pb_TimerID_GPU);
+   function_to_bencmark(...);
+}
+
+\end{lstlisting}
+
+
+\subsubsection{Compile}
+\label{sec:compile}
+
+\begin{verbatim}
+./parboil compile <name_program> <version>
+\end{verbatim}
+with some tests use ``cuda'' as the version ID (no quotes). 
+
+
+\subsubsection{Run (execute)}
+\label{sec:run-execute}
+
+\begin{verbatim}
+./parboil run <name_program> cuda <device_ID>
+\end{verbatim}
+with \verb!device_ID! can be default.
+
+
+\subsection{LBM}
+\label{sec:lbm}
+
+\verb!LBM_performStreamCollide()!: the baseline version, easy to
+understand, but very slow. 
+
+
+
+\verb!TEST_FLAG_SWEEP! : a mixture of cells that contains fluids and
+.... So it tells whether there is an OBSTACLE. There's a bunch of
+sources
+\begin{verbatim}
+SRC_N
+SRC_C
+...
+SRC_
+\end{verbatim}
+
+After a whole bunch of floating-point math. the fluid flow for each
+grid cell will be computed. 
+
+Now look in \verb!cuda_base! folder: here each thread process a whole
+row. 
+
+
+The registers are named
+\begin{verbatim}
+tempS
+tempT
+tempNT
+...
+\end{verbatim}
+
+Padding in each dimension: padding in the highest Cartesian dimension
+must be at least 4 to simplify the kernel by avoiding out-of-bound
+access checks. 
+
+To align row of X to 128bytes
+\begin{verbatim}
+#define PADDING_X (8)
+#define PADDING_Y (0)
+#define PADDING_Z (4)
+\end{verbatim}
+
+\begin{verbatim}
+#define TOTAL_CELLS (SIZE_X*SIZE_Y*SIZE_Z)
+#define TOTAL_PADDED_CELLS (PADDED_X*PADDED*Y*PADDED_Z)
+\end{verbatim}
+
+Flattening function: the macro to map a 3D index and element to a
+value 
+\begin{verbatim}
+#define CALC_INDEX(x,y,z,e) (e+ N_CELL_ENTRIES * ((x)+(y)*PADDED_X +
+         (z) * PADDED_X * PADDED_Y))
+\end{verbatim}
+
+For scatter or gather, we set to 1 or 0, respectively
+\begin{verbatim}
+#if 0 
+#define GATHER
+#else
+#define SCATTER
+#endif
+\end{verbatim}
+As fluid flow in every direction, so we have both input fluid flow and
+output fluid flow of a cell. 
+\begin{enumerate}
+\item gather: read data from neighbor, and update the result locally
+\item scatter: 
+\end{enumerate}
+NOTE: None of the data updated by that cell will be used by other
+neighbor cell at that time step. So, we don't need to use share data;
+nor share conflict may occur. So, we need 2 separate global data array
+one to store old time step data, and one to store updated values
+in the current time steps. And the current time step data will become
+the old time step data in the next time step. 
+
+
+A thread iterate through all input and write to a single output
+point. This is a reduction approach, and we can avoid atomic
+update. Even though atomic functions are quite fast in Fermi, when you
+start using Hardware-accelerated function (sine,cosine, exp), it will
+take much longer, and thus you want to avoid more waiting time. 
+
+
+cos() and sin() will be mapped to 10s of instructions on GPU (using
+Fourier transform). To increase the performance and reduce the
+precision, you can use the fast math version in GPU \verb!__cosf()!
+and \verb!__sinf()!; or tell the compiler to use the fast math by
+adding the compiling option \verb!--use_fast_math!.
+
+\subsection{Stencil}
+\label{sec:stencil}
+
+
+Run:  ./parboil run stencil cuda default
+\begin{verbatim}
+Parboil parallel benchmark suite, version 0.2
+
+mkdir -p build/cuda_default
+/usr/local/cuda/bin/nvcc src/cuda/main.cu -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include -O3   -c -o build/cuda_default/main.o
+g++  -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include  -c src/cuda/file.cc -o build/cuda_default/file.o
+/usr/local/cuda/bin/nvcc src/cuda/kernels.cu -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include -O3   -c -o build/cuda_default/kernels.o
+gcc  -I/home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/include -I/usr/local/cuda/include  -c /home/ac/tra294/CUDA_WORKSHOP_UIUC1108/common/src/parboil_cuda.c -o build/cuda_default/parboil_cuda.o
+/usr/local/cuda/bin/nvcc build/cuda_default/main.o build/cuda_default/file.o build/cuda_default/kernels.o build/cuda_default/parboil_cuda.o -o build/cuda_default/stencil -L/usr/local/cuda/lib64 -lm -lpthread 
+** waiting for 1419138.acm to finish...
+** done. 79.0 seconds.
+Compute mode is already set to EXCLUSIVE_PROCESS for GPU 1:5E:0.
+Resolving CUDA runtime library...
+        /usr/local/cuda_wrapper/lib64/cuda_wrapper.so (0x00007f2f0b3ff000)
+        libcudart.so.4 => /usr/local/cuda/lib64/libcudart.so.4 (0x00007f2f0af72000)
+CUDA accelerated 7 points stencil codes****
+Original version by Li-Wen Chang <lchang20@illinois.edu>
+This version maintained by Chris Rodrigues  ***********
+IO        : 20.274351s
+GPU       : 5.194787s
+Copy      : 0.254565s
+Driver    : 0.003430s
+Compute   : 0.431694s
+CPU/GPU Overlap: 0.003507
+Timer Wall Time: 26.155737
+Pass
+Parboil parallel benchmark suite, version 0.2
+\end{verbatim}
+
+Thread block configuration
+\begin{lstlisting}
+int tx = 32;
+int ty = 4;
+dim3 block(tx,ty,1);
+\end{lstlisting}
+
+Change threads size mapping from tx by ty to 2tx * ty
+\begin{lstlisting}
+dim3 grid((nx+tx*2-1)/(tx*2), (ny+ty-1)/ty,1)
+int sh_size = tx*2*ty*sizeof(float);
+\end{lstlisting}
+
+
+The performance of stencil is usually important with big array, and
+you need to iterate through the z-dimension. This will guarantee
+threads in a thread block will work with closely data elements. In is
+true in C; how about in Fortran????
+
+Main execution
+\begin{lstlisting}
+pb_SwitchToTimer(&timers, pb_TimerID_GPU);
+for (int i = 0; i < iteration; t++) {
+  block2D_hybrid_coarsen_x<<<grid, block, sh_sie>>> (c0, c1, d_A0,
+        d_Anext, nx, ny, nz)
+}
+CUERR // check and clear any existing errors
+\end{lstlisting}
+
+\subsubsection{Tesla}
+\label{sec:tesla}
+\begin{verbatim}
+const int sh_id1 = 
+const int sh_id2 = 
+\end{verbatim}
+As we don't have cache; we need to use shared memory to load 
+\begin{verbatim}
+extern __shared__ float sh_A0[]; //dynamic shared memory
+sh_A0[sh_id1] = 0.0f;
+sh_A0[sh_id2] = 0.0f;
+__syncthreads();
+\end{verbatim}
+Using shared memory is quite complicated than using Fermi cache. 
+
+Then, get the available region 
+
+
+\verb!__syncthreads()! cannot be put inside an if condition or a loop;
+so if using shared memory; we need to use multiple ``if''
+statements. That's why Fermi is better
+
+\subsubsection{Fermi}
+\label{sec:fermi-1}
+
+\section{Lab 4: LBM}
+\label{sec:lab-4:-lbm}
+
+LBM application in this lab simulates a closed, lid-driven cavity
+system. A LBM simulation grid is a regular lattice division of
+physical space, where each cell contains 19 floating-point values
+recording the fluid flow in 18 3D adjacent and diagonal directions
+(North, South, East, West, Top, Bottom, and every compatible pair in
+the set). In addition, there's another field, a word of flags for
+determining the cell is an obstacle, fluid or driving cell.
+
+So, the data structure for a cell contains 20 values referenced by 1-
+or 2-character names, e.g. W, BW,....
+
+
+In the example of LBM simulation, each invocation of the kernel
+correspond to a time step
+\begin{lstlisting}
+for (t = 1; t <= param.nTimeSteps; t++) {
+   pb_SwitchToTimer(&timers, pb_TimerID_GPU);
+   CUDA_LBM_performStreamCollide( * CUDA_srcGrid, *CUDA_dstGrid);
+}
+\end{lstlisting}
+The data is an 3D array of data structure, i.e. A[i,j,k] is not a
+float or double-precision, but a structure of data elements. So, each
+thread in the kernel should load all fields of one cell from global
+memory to private variables. Then it computes some output based on
+those private variables, and then writes output to global memory. 
+
+
+As we need a quick reference to the location of each field of a
+particular cell, we will define some macros. 
+\begin{enumerate}
+\item SWEEPX, SWEEPY, SWEEPZ : name the variables defining X, Y and Z
+  coordinate of a cell
+\item \verb!SRC_*, DST_*! use those variables to compute an index for
+  where the cell should find its input and output values 
+\end{enumerate}
+
+
+
+\section{QCD application: MILC on GPU}
+\label{sec:qcd-application}
+
+QCD is the theory of the strong force interaction between nucleons in
+an atom.  
+
+MILC = MIMD Lattice Computation is a widely used QCD system used to
+simulate 4D SU lattice gauge theory, used at many supercomputing
+centers. There have been efforts to advance MILC on Cell Broadband
+Engine. Here, we describe efforts to advance MILC on GPU.
+
+
+
+There are four main parts of the code that are responsible for over
+98\% of the overall execution time [2]: Conjugate Gradient (CG) solver
+(over 58\%), Fermion force (FF) (over 22\%), Gauge force (GF) (about
+10\%), and ``fat links'' (about 9\%). All these kernels achieve between
+1 and 3.5 GFLOPS per CPU core on a CPU system [2].  So, they start
+porting one by one to GPUs.
+
+
+The Lattice QCD solve $M\phi=b$, where $b$ are complexes variables
+carrying color index i=1,2,3 and a 4D lattice coordinates. So, the
+data element is a structure. The matrix M is given by $M=2maI+D$, with
+$2ma$ is constant, and matrix D is called Dslash.
+MILC uses staggered Dslash operator whereas Boston University provided
+Wilson-Dirac Dslash operator. % The Dslash operator is automatically
+% generated by some Python script. 
+
+In Dslash operation, all links are read-only and only spinors are
+updated. 
+
+On single GPU, we can see peak performance of more than 100GFLOPS. Can
+we keep the same peak when running on GPU???? 
+
+In Lattice QCD computation, we need 2 stages:
+\begin{enumerate}
+\item configuration generation
+\item analysis
+\end{enumerate}
+
+
+For each spinor we have 16 floating-point numbers, we split the odd
+numbers and even numbers. 
+
+So, by splitting
+\begin{verbatim}
+AAAAAABBBBBB....
+\end{verbatim}
+with AAAAAA is one spinor field, the layout on GPU is
+\begin{verbatim}
+AABB ..... (pad) AABB.... (pad) AABB.... (pad) (ghost spinor fields)
+\end{verbatim}
+This will guarantee...
+
+
+So, they map 4D indices to 1D indices. In C, you traverse x first,
+then y, and finally z direction. So, x is the fastest changing
+dimension, and z is the slowest. 
+
+
+If you're on the boundary, 
+
+
+{\bf Dslash optimization technique}: 
+\begin{itemize}
+\item They use texture memory to read data improves performance.  Use
+  padding memory to avoid{\bf Partition camping}, i.e. partition
+  camping occur when you access only a few bank on a memory modules;
+  so it's waste the memory bandwidth. This is similar to a concept
+  introduced earlier of Sect.~\ref{sec:dram-gpu}).
+
+\item Shared memory is used to reduce register pressure. 
+\end{itemize}
+
+So, we have local spinor calculated by the kernel, another kernel with
+ghost spinor is a gather kernel needed.  How about GPUDirect? can it
+give any improvement? All kernel types for each computation cube
+\begin{enumerate}
+\item interior kernel: 1
+\item X exterior kernel: 2
+\item Y exterior kernel: 2
+\item Z exterior kernel: 2
+\end{enumerate}
+The exterior kernels of one computation cube must be synchronized with
+other computation cube on another GPU via communication channel.
+
+We need to create 9 streams:
+
+
+
+Then we use mixed precision CG solver, rather than using pure CG
+solver, to increase the performance with some drop in accuracy. As
+mixed precision cannot be directly applied to multi-shift algorithm;
+the solution is
+\begin{enumerate}
+\item solve the equations $(A+\sigma_i)x=b$ in low precision using
+  multi-shift algorithm
+\item then refine the solution one by one using the mixed precision CG
+  solver. 
+\end{enumerate}
+This approach also use a low GPU memory 
+
+
+The benchmark show 1GPU = 74 CPU cores. The performance drop when we
+increase the number of GPUs. Mainly because the problem for a single
+GPU is not big enough. 
+
+\subsection{Wheat GPU is suited for LQCD computation}
+\label{sec:wheat-gpu-suited}
+
+LQCD inverter can detect errors. However, there are other parts that
+cannot be detected errors using inverter. So, using Fermi-based card
+with ECC and larger memory is important.
+
+\subsection{Future plan}
+\label{sec:future-plan}
+
+Make use of GPUDirect 1.0: infiniband and CUDA share the same pinned
+memory (copy from GPU to pinned memory, and Infiniband read data from
+pinned memory).
+
+Make use of GPUDirect 2.0: GPU-GPU can perform peer-to-peer
+communication. This is indeed implicit data copy via
+Infiniband. However, in some applications, e.g. LMIC, difficult to use
+given the current constraints. 
+
+New codes to add:
+\begin{enumerate}
+\item Link fattening (FAT)
+\item HISQ Qauge force
+\item ...
+\end{enumerate}
+
+
+\section{Question}
+\label{sec:question}
+
+In the LBM example, you use Array of Structure, which is easier to
+manage the code; but it may cost the performance drop. Did you
+benchmark the performance diference? Based on your experience, how big
+of the structure, or what kind of data elements in the structure (say
+floating, and double-precision or char) that we should use Structure
+of Array.
+
+Thanks.
+
+
+\section{Further studies}
+\label{sec:further-studies}
+
+What we need to target: develop your algorithm and programming skills
+for heterogeneous parallel computing
+\begin{itemize}
+\item To achieve your science and engineering goals
+\item Review every month: frontier problems, new techniques, and new
+  technologies
+\item Using literature, on-line courses, and on-line communities
+\item Code bases, templates, and computing resources
+\end{itemize}
+
+As you know, the main hurdles is (1) code serialization due to
+conflicting use of critical resources (e.g. limited hardware of
+special-purpose functions, or write to the same memory location); or
+over subscription of global memory bandwidth (using tiling can
+resolve); and (3) load imbalancing among parallel threads (real world
+is un-uniformity, and bias; so balancing is very important as the
+overall speed is the speed of the slowest one).
+
+There are 8 optimization patterns for algorithms (so far),
+Table~\ref{tab:Opt-technique_CUDA}. For example: tiling help avoiding
+bandwidth issue and improve locality.
+
+\url{http://courses.engr.illinois.edu/ece598/hk/}
+
+\begin{table}[hbt]
+\begin{center}
+\caption{Techniques and its purpose}
+\begin{tabular}{ccccccc} 
+\hline
+techniques & issues to deal with \\ 
+& contention & bandwidth & locality & efficiency & load imbalance CPU
+leveraging \\
+tiling \\
+privatization\\
+compaction \\
+binning\\
+data layout transformation\\
+thread coarsening \\
+scatter to gather conversion \\
+\hline\hline
+\end{tabular}
+\end{center}
+\label{tab:Opt-technique_CUDA}
+\end{table}
+
+Different application (benchmarks) need to use different
+techniques. Some of them have been implemented in ``parboil'' are:
+cutcp, mri-q, gridding, sad, stencil, ....
+
+So, in your code, you need to build a table like this, with each part
+of the code in the kernel, you can check to make sure what issues have
+been resolved in your problem.
+
+\begin{framed}
+  NOTE: We never avoid the problem; we just ship it from an expensive
+  place to a less costly place to solve them. Likewise, in CUDA, we ship
+  the data from global memory access to multiple cache or shared memory
+  access. The number of data access may increase; however, by increasing
+  locality, its overall performance can increase. 
+\end{framed}
+
+Challenges in parallel programming (MPI, OpenMPI, Python, CUDA...)
+\begin{enumerate}
+\item the hardest challenge: computation of no known scalable parallel
+  algorithms (no good way to solve it in parallel). E.g.: shortest
+  path, Delaunay triangulation...
+\item data distribution that cause catastrophical load imbalance,
+  e.g. free-form graphs, MPI spiral scan
+\item computations that do not have data reuse, e.g. matrix vector
+  multiplication. So, try to reuse loaded as many time as possible
+  before loading a new one is very critical to a good algorithm.
+\item algorithm optimization that require expertise or application
+  domain knowledge, e.g. to improve locality and regularization
+  transformations. 
+\end{enumerate}
+
+
+A collection of other people's experience:
+\begin{enumerate}
+\item GPU Computing gems Vol.1 (Emerald)
+  \begin{itemize}
+  \item Jan, 2011
+  \item 50 gems in 10 application areas
+  \end{itemize}
+\item GPU Computing gems Vol.2 (Jade)
+  \begin{itemize}
+  \item Sept, 2011
+  \item 40+ gems (more applications, tools, environments)
+  \end{itemize}
+\end{enumerate}
+They will show their real code, accessible from
+\verb!gpucomputing.net!.
+
+
+
+CUDA Zone though not academic focus; So gpucomputing.net is more
+academic focus. 
+
+Twice a month, \verb!gpucomputing.net! run a research forum
+
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

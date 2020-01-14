@@ -1,0 +1,34 @@
+
+\chapter{Benchmark ECC}
+\label{chap:benchmark-ecc}
+
+\section{getCompPdt}
+\label{sec:getcomppdt}
+
+\subsection{Original}
+\label{sec:original}
+
+with GPU time is 62-63 (us) (compared to leak: 27-28 us), and CPU
+overall time is 108-110 (us) (compared to leak: 88-90 us). The
+counters are
+\begin{verbatim}
+gld_request     = 896
+gst_request     = 352
+L1_global_load_hit  = 1060
+L1_global_load_miss = 247
+instr_issued    = 26K
+instr_executed  = 23K
+registers       = 56
+occupancy       = 0.33
+\end{verbatim}
+
+
+After we modify \verb!chiO, chiC!, we get GPU time 56-57 (us) and CPU
+overall time 102-103 (us). 
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

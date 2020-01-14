@@ -1,0 +1,131 @@
+\chapter{CUDA Graphics (OpenGL/DirectX)}
+\label{chap:CUDA_OpenGL.DirectX}
+
+A CUDA application can interact (write/read) with data from OpenGL/Direct3D
+APIs by mapping the resource from OpenGL/Direct3D to the address space of CUDA.
+Currently, this feature is only available in CUDA C/C++. 
+
+At the beginning of the program, the CUDA device need to be enabled with
+OpenGL/DirectX interoperability using
+\begin{verbatim}
+cudaGLSetGLDevice(dev_ID)
+\end{verbatim}
+\textcolor{red}{IMPORTANT: cudaGLSetGLDevice() and cudaSetDevice() are mutually
+exclusive. So, we only use one of them}. We use cudaSetDevice()   in a
+pure computational CUDA application.
+
+{\bf What can be registerred and mapped?}: OpenGL buffers, texture, and
+render-buffer objects.
+
+The orders:
+\begin{enumerate}
+  \item register
+  \item map
+  \item use in CUDA
+  \item unmap
+  \item repeat 2
+  \item unregister
+\end{enumerate}
+
+To register the resource with CUDA
+\begin{verbatim}
+ // register a buffer
+ cudaGraphicsGLRegisterBuffer()
+ 
+ // register a texture or render-buffer object
+ cudaGraphicsGLRegisterImage()
+\end{verbatim}
+\textcolor{red}{Register a resource is potentially high-overhead, so you're
+recommended to register once per resource}. To unregister, use 
+\begin{verbatim}
+cudaGraphicsUnregisterResource()
+\end{verbatim}
+\begin{enumerate}
+  \item The function cudaGraphicsGLRegisterBuffer() returns a pointer to a CUDA graphics
+object of type
+\begin{verbatim}
+struct cudaGraphicsResource
+\end{verbatim}
+and can be read/written by kernels or via \verb!cudaMemcpy()! function.
+
+The function also supports all texture formats with 1, 2 or 4 components with
+the following internal types
+\begin{verbatim}
+ // float
+GL_RGBA_FLOAT32
+ // normalized integer
+ GL_RGBA8, GL_INTENSITY16
+ // unnormalized integer
+ GL_RGBA8UI
+\end{verbatim}
+
+\textcolor{red}{IMPORTANT: unnormalized integer formats require OpenGL 3.0; and
+thus written by shaders (CUDA cores), not fixed function pipeline}. 
+
+
+ \item The second function returns as a CUDA array which can be read/written
+ via \verb!cudaMemcpy2D()! call. To read from a kernel, it need to be bind to
+ a texture or a surface reference. When the resource is registered with
+ \verb!cudaGraphicsRegisterFlagsSurfaceLoadStore! flag (using 
+ cudaGraphicsResourceSetMapFlags()), it can be written via surface write 
+ functions.
+\end{enumerate}
+
+
+Once it's registerred, it can be mapped or unmapped as many time as necessary
+using 
+\begin{verbatim}
+cudaGraphicsMapResources()
+cudaGraphicsUnmapResources()
+\end{verbatim}
+Then, it can be used from the CUDA kernel using the memory address returned by
+\begin{verbatim}
+ // for buffers
+cudaGraphicsResourceGetMappedPointer()
+
+ // for CUDA arrays
+ cudaGraphicsSubResourceGetMappedArray() 
+\end{verbatim}
+When we know the resource is being used for read-only or write-only, we can 
+optimize resource management, by using  
+\begin{verbatim}
+cudaGraphicsResourceSetMapFlags() 
+\end{verbatim}
+to specify usage hints. 
+
+\textcolor{red}{While the resource is mapped, OpenGL/Direct3D APIs can't use
+them. Otherwise, undefined results are returned}. 
+
+
+\section{OpenGL vs. DirectX interoperability}
+\label{sec:opengl-vs.-directx}
+
+\verb!cudaGLMapBufferObject()!
+
+\verb!cudaD3D9MapVertexBuffer()!
+
+
+
+\section{Geforce}
+
+  \url{http://www.geforce.com/whats-new/articles/geforce-experience-2-1-2-released}
+\begin{enumerate}
+  \item Dynamic Super Resolution (DSR)
+  \item 4K ShadowPlay recording
+
+\end{enumerate}
+\subsection{GameStream}
+
+\begin{enumerate}
+  \item Notebook GameStream
+  \item Remotely wake-on-LAN (from sleep mode)
+  \item Remote Streaming: stream PC games to SHIELD from outside your home
+\end{enumerate}
+
+
+
+\subsection{ShadowPlay}
+
+\subsection{SHIELD game controller}
+
+\url{http://shield.nvidia.com/wireless-game-controller/}

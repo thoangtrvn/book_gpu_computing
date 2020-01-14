@@ -1,0 +1,42 @@
+
+\chapter{NVIDIA NPP}
+\label{chap:nvidia-npp}
+
+{\bf NPP} is the package containing a set of functions focusing on
+image and video processing. 
+\begin{itemize}
+\item NPP 1.0 works with CUDA 2.3
+\item NPP 1.1 works with CUDA 3.0
+\end{itemize}
+
+With CUDA 4.0, NPP can run 10x to 36x faster in image processing. What it can
+does?
+\begin{enumerate}
+  \item Data exchange \& initialization: Set, Convert, CopyConstBorder, Copy, 
+Transpose, SwapChannels
+  \item Color Conversion: RGB To YCbCr (\& vice versa), 
+ColorTwist, \verb!LUT_Linear!
+  \item Threshold \& Compare Ops: Threshold, Compare
+  \item Statistics: Mean, StdDev, NormDiff, MinMax, 
+Histogram, SqrIntegral, RectStdDev
+  \item Filter Functions: FilterBox, Row, Column, Max, Min, Median, 
+Dilate, Erode, SumWindowColumn/Row
+  \item Geometry Transforms:
+Mirror, WarpAffine / Back/ Quad, 
+WarpPerspective / Back / Quad, Resize
+  \item Arithmetic \& Logical Ops:
+Add, Sub, Mul, Div, AbsDiff
+\item JPEG:
+DCTQuantInv/Fwd, Quantiza
+  \item 
+\end{enumerate}
+
+CUDA 4.1 has +2000 image processing and signal processing primitives.
+CUDA NPP 4.1 increases upto 40x performance than Intel
+IPP. 
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

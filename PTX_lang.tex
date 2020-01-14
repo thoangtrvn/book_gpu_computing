@@ -1,0 +1,706 @@
+
+\chapter{PTX language}
+\label{chap:ptx-language}
+
+% \section{Software vs. Hardware}
+% \label{sec:softw-vs.-hardw}
+
+Just like CPU (with Intel486, Intel586, Intel Duo-core...), GPU also
+has different
+generations\footnote{ yet the evolution of GPU architectures is
+  changing quickly},
+in which the {\bf opcode} (binary code) may not be compatible between
+different generations of GPUs. Thus, in order for the compiled code
+can run on future generations of GPUs, nVIDIA designed an intermediate
+language, just like Java Virtual Machine (JVM), that they called PTX
+(Parallel Thread eXecution). As a result, there are two levels of code
+generation.
+\begin{itemize}
+\item generate code directly to binary code which can only run on a
+  specific hardware architecture. This lower level - {\it binary code}
+  (or {\bf CUBIN} object) is the one targeted to run on a specific
+  hardware device, i.e.  with a specific {\it compute capability}
+  (CC).
+
+\item generate code to PTX code which then will be automatically
+  translate to a proper binary code when it's evoked, depending on the
+  hardware being used.  This intermediate level, called {\it PTX code}
+  (an assembly-like language) is the one that can be used for
+  {\it just-in-time} compilation to binary code that can run on newer
+  CUDA-capable devices without recompiling the code from scratch.
+\end{itemize}
+
+
+\begin{framed}
+  ``Software'' refers to the version of the intermediate language
+  (PTX), while the ``Hardware'' refers to the version of the GPU
+  architecture. In either case, the latter generation, in general, has
+  more feature than the previous one or run faster.
+\end{framed}
+
+\section{CTA}
+\label{sec:cta}
+
+
+A {\bf cooperative thread array} (CTA) is an array of threads that
+execute a kernel concurrently or in parallel. Within CTA, each thread
+has a unique ID. Based on this ID, we will assign input data to that
+thread. A thread ID is a 3-element vector \verb!tid! (tid.x, tid.y,
+tid.z) that specifies the thread's position within a 1D, 2D or 3D CTA.
+The shape of the dimension is given in\verb!ntid! (ntid.x, ntid.y,
+ntid.z)
+
+Threads within a CTA execute in SIMD fashion in groups called
+{\bf warps}. Threads in a single warp execute the same instruction,
+but target on different data input. The warp size is
+machine-dependent. nVIDIA Tesla-based GPU use warp size of 32.
+\verb!WARP_SZ! is an run-time intermediate constant which can be used
+in any PTX instruction where intermediate constant is allowed. 
+
+There is a maximum number of threads that a CTA can contain. In Tesla
+2nd generation, it's 512. In Fermi, it's 768. 
+
+However, CTA that executes the same kernel can be batched together
+into a grid of CTA. Threads from different CTA cannot communicate and
+synchronize with each other. In a grid of CTAs, each CTA has a unique
+CTA ID \verb!ctaid!; and the shape of the dimension is given in
+\verb!nctaid!. A gain, each grid has a maximum number of CTAs. 
+
+With multiple kernels, there can be more than one grid on the
+list. Grids is thus identified by the temporal grid identifier
+\verb!gridid!.
+
+\textcolor{red}{All the above information can be accessed via the
+  predefined, read-only special registers} 
+\begin{lstlisting}
+% tid, %ntid, %ctaid, %nctaid, and %gridid.
+\end{lstlisting}
+
+\section{SIMT on SMs}
+\label{sec:simt-sms}
+
+When a host program call a kernel grid, CTAs in the grid are
+enumerated and distributed to multiple SMs with available execution
+capacity. Threads in each CTA (or thread blocks) execute concurrently
+on one SM. When one CTA terminate, new CTAs are launched on the
+vacated SMs. 
+
+A SM can run multiple threads with scheduling overhead. To manage
+hundreds or thousands of threads, SMs employ the new architecture
+called SIMT (single instruction, multiple threads) where SM map each
+thread to one scalar processor core, with its own instruction address
+and register state. This is carried out by SP's SIMT unit. It doesn't
+issue thread one by one but in groups, known as warps. The way a CTA
+is split into warps is always the same, i.e. each warp contains
+threads of consecutive, increasing thread ID with the first warp
+containing thread ID 0. 
+
+
+
+
+\section{PTX language}
+\label{sec:ptx-language}
+
+{\bf PTX} is a set of processor-independent instructions that is
+considered as an assembly language for a virtual GPU architecture, or
+a {\it compute} architecture. 
+
+PTX is a low-level intermediate programming language that allows the code to run
+in newer architectures of GPU (e.g. PTX for Tesla can run on Fermi). CUBIN
+format is binary code that targets to run on a particular architecture of GPU.
+
+
+Each version of PTX is targeted to devices of a specific compute
+capability (Sect.~\ref{sec:compute-capability}). PTX is now at
+version 2.1 (Sept, 2010) which has more instructions than PTX v1.0,
+1.1, 1.2, 1.3 and 2.0. Read more detail on
+\verb!NVIDIA_CUDA-ptx_1_4.pdf!, \verb!ptx_isa_2.1.pdf!.
+
+\begin{verbatim}
+            can be mapped to
+PTX1.0_instr_1 --------> CC1.0_instr_1
+               --------> CC1.3_instr_1'
+               --------> CC2.0_instr_1''
+with
+  CC1.0_instr_1, CC1.3_instr_1', CC2.0_instr_1'' 
+can be incompatible.
+\end{verbatim}
+
+PTX is forward compatible with newer device, but not backward
+compatible. The version of PTX to generate is specified via the
+compiler option \verb!-arch!.
+\begin{verbatim}
+PTX1.3_instr_1 ----X---> CC1.0_instr_1
+               --------> CC1.3_instr_1'
+               --------> CC2.0_instr_1''
+\end{verbatim}
+
+
+
+References:
+\begin{itemize}
+\item \url{http://blog.langly.org/2009/02/12/cuda-hacking-ptx-code/}
+\end{itemize}
+
+\section{PTX program}
+\label{sec:ptx-program}
+
+
+A PTX program is a collection of ASCII source files, with
+assembly-language like syntax. This will be compiled by \verb!ptxas!
+to binary code.
+
+A source file can have \verb!#! preprocessor directives, and can be
+processed by \verb!cpp!. PTX is case-sensitive and use lower-case for
+keywords. 
+
+Starting each file must be a \verb!.version! directive that tell the
+version of PTX; and a \verb!.target! directive to tell the target
+hardware. 
+
+
+To comment, we use C-style.
+
+
+A statement can start with an optional label, and end with a
+semi-colon. Between them can be a directive or an instruction.
+\begin{lstlisting}
+   .reg .b32 r1, r2;
+   .global .f32 array[N];
+start: mov.b32 r1, %tid.x;
+   shl.b32 r1, r1, 2; // shift thread id by 2 bits
+   ld.global.b32 r2, array[r1]; // thread[tid] gets array[tid]
+   add.f32 r2, r2, 0.5; // add 1/2
+\end{lstlisting}
+
+
+\subsection{Just-in-time compilation: PTX code}
+\label{sec:just-in-time_compile}
+
+If the GPU code is compiled into PTX only (Sect.\ref{sec:nvcc}), the file is
+also executable.
+
+When the program is invoked, the program will automatically call the CUDA driver
+to compile the code (just-in-time compilation) to the cubin of the device being
+used. This feature is supported since CUDA 2.1 (for applications that
+dynamically generate CUDA kernels). This generated cubin code is automatically
+cached ({\it compute cache}) to avoid repeating compilation in subsequent run of
+the program. When the device driver is updated, the compute cache is
+automatically validated so that the program can benefit from the improvement of
+the new just-in-time compiler built with the new device driver.
+
+\begin{framed}
+Environment variable to control just-in-time compilation
+\begin{enumerate}
+  \item \verb!CUDA_CACHE_DISABLE = 1!: disable compute cache
+  \item \verb!CUDA_CACHE_MAXSIZE = size!: size of the compute cache (in bytes):
+  default is 32MB, and maximum is 4GB.
+  \item \verb!CUDA_CACHE_PATH = folder!: folder where the compute cache files
+  are stored, default on
+  \begin{itemize}
+    \item Linux: \verb!~/.nv/ComputeCache!
+    \item Windows: \verb!%APPDATA%\NVIDIA\ComputeCache!
+    \item MacOS: \verb!$HOME/Library/Application/Support/NVIDIA/ComputeCache!
+  \end{itemize}
+  \item \verb!CUDA_FORCE_PTX_JIT = 1!: ignore any embedded cubin code in the
+  CUDA program, and do just-in-time compilation for the embedded PTX code.
+\end{enumerate}
+\end{framed}
+
+
+\subsection{Directive}
+\label{sec:directive}
+
+
+A directive starts with a dot (.)
+
+\subsection{Instruction}
+\label{sec:instruction}
+
+An instruction start with an opcode, followed by a comma-separated
+list of zero or more operands. 
+
+Operands may be register variables, constant expressions, address
+expressions, or label names. The destination operand is always the
+first; then followed by source operands.
+
+In addition, an instruction can have optional guardian predicate,
+which precede the opcode, e.g. is written as \verb!@p!, where p is a
+predicate register. The guard predicate may be optionally negated,
+written as \verb/@!p/.
+
+\subsection{Identifiers}
+\label{sec:identifiers}
+
+PTX allows the percentage sign as the first character of an
+identifier. The percentage sign can be used to avoid name conflicts,
+e.g.  between user-defined variable names and compiler-generated
+names. 
+
+List of predefined identifiers:
+\begin{verbatim}
+%clock      %laneid      %lanemask_gt %pm0, ..., %pm3
+%clock64    %lanemask_eq %nctaid      %smid
+%ctaid      %lanemask_le %ntid        %tid
+%envreg<32> %lanemask_lt %nsmid       %warpid
+%gridid     %lanemask_ge %nwarpid     WARP_SZ
+\end{verbatim}
+\begin{verbatim}
+sm_1x and sm_20 targets have a WARP_SZ value of 32.
+\end{verbatim}
+
+\subsection{Constants}
+\label{sec:constants}
+
+\subsubsection{Floating-point constants}
+\label{sec:float-point-const}
+
+All FP constants use 64-bit and all FP arithmetic expressions are
+evaluated using 64-bit DP arithmetic. However, they will be mapped to
+appropriate FP size based on the data or instruction at its use. 
+
+
+To specify IEEE 754 doubleprecision floating point values, the
+constant begins with 0d or 0D followed by 16 hex digits.  To specify
+IEEE 754 single-precision floating point values, the constant begins
+with 0f or 0F followed by 8 hex digits.
+
+\section{Compute Capability}
+\label{sec:compute-capability}
+\label{sec:CC-X.X}
+
+The hardware/native instruction set (binary code) of NVIDIA GPU hardware is
+called {\bf compute capability} (CC) which is identified by two
+numbers, e.g. 1.0, 1.1, 1.2, 1.3.
+\begin{enumerate}
+
+  \item CC 1.x
+
+Early version :
+1.0, 1.1 and 1.3\footnote{there is also 1.2, yet there is no GPU for this compute
+  capability}. The first Tesla GPU, dedicated to high-performance computing only
+has CC 1.4. The second generation of Tesla card has CC 2.0 (Fermi card). Kepler
+K10 has CC 3.0, and Kepler K20 has CC 3.5.
+
+  \item CC2.0 - Sect.\ref{sec:CC2.0}
+  
+  \item CC3.0 - Sect.\ref{sec:CC3.0}
+\end{enumerate}
+The first number, major revision
+number, refers to the core architecture. The second, minor revision number,
+refers to an incremental improvement to the core architecture. 
+
+IMPORTANT: Not backward compatibility at binary-code level, e.g.
+GPU CC2.0 cannot run binary code compiled for CC 1.3.
+
+
+Compute capability (CC) refers to the hardware capability of a NVIDIA GPU.
+The higher compute capability has all feature of a lower compute capability. A
+version of CC is identified by two numbers.  
+
+As discussed in Sect.~\ref{sec:ptx-language}, PTX serves as a virtual
+instruction set (like the one Java uses) that C kernels are compiled
+to. % From this PTX, depending on the hardware (compute capability), the
+% compiler will compile it to the actual hardware instruction (or
+% {\it machine code}) for the program to run. The hardware instruction
+% set is targeted to a specific GPU generation; and thus the code
+% compiled to this level may not run properly on other GPUs.
+
+% So, compiling your code to the PTX make its possible for running on
+% different GPU generations. And every time you run your program, it
+% need to be compiled into the hardware code via the JIT (just-in-time)
+% compiler. 
+You have the options to embed both the hardware code and the PTX into
+a single file (unless option \verb!--export-dir! is specified),
+i.e. we can use both the real GPU (\verb!sm_xx!) or virtual GPU
+(\verb!compute_xx!) when compile the code. This help the code to run
+faster on the hardware you usually use; and can run on a different GPU
+if you may want to, but not often.
+
+\begin{framed}
+  You use \verb!-arch!  to tell the support feature, while you use
+  \verb!-code! to tell the actual hardware chip.q
+\end{framed}
+
+There are also different version of PTX intermediate language. To
+compile the C code to PTX code, using a specific given version of PTX,
+we use the \verb!-arch! compiler option. So, if you want the code to
+run on every GPU, compile it to the PTX designed for GPU CC 1.0 or
+\begin{verbatim}
+-arch=compute_10
+\end{verbatim}
+If you want to compile your code to the hardware instruction set
+designed for GPU CC 1.0, then
+\begin{verbatim}
+-code=sm_10
+\end{verbatim}
+
+
+As PTX code is forward compatible but not backward compatible, you
+cannot compile using \verb!-arch=compute_13! for hardware
+\verb!-arch=sm_10!; but you can use with \verb!-arch=sm_20!. The
+reason is that the generated PTX code will assume the availability of
+all hardware features that specified by the PTX. The code that
+requires double-precision must be compiled using PTX 1.3 or higher.
+\begin{verbatim}
+-arch=compute_13 
+\end{verbatim}
+
+
+% And the architecture specified by this option is assumed by the
+% compilation chain up to the PTX stage. 
+Except for a few exception (to be described shortly),
+\verb!compute_xx! must go with \verb!-arch!, and \verb!sm_xx! must go
+with \verb!-code!.
+\begin{itemize}
+\item virtual GPU: \verb!compute_10, compute_11, compute_13!. The new
+  PTX version \verb!compute_20! requires hardware support
+  \verb!sm_20!.
+\item real GPU: \verb!sm_10, sm_11, sm_13, sm_20!. New Fermi support
+  \verb!sm_20!.
+\end{itemize}
+
+
+In NVCC, we use the code \verb!sm_!$x.y$ with $x$ indicates the
+generation (core architecture), $y$ indicates the minor
+improvement. Currently, NVIDIA has GPUs with \verb!sm_10!,
+\verb!sm_11!, \verb!sm_13! (there is no GPU with \verb!sm_12!) which
+is known as levels of {\bf compute capabilities}. The latest Fermi GPU
+has \verb!sm_20!.
+
+When the hardware can do more things, accordingly, the instruction set
+in PTX (the software) need to be extended.  So far, CUDA has 4
+different version of PTX, denoted by \verb!compute!$x.y$ that provides
+to the application, with the latter cover all features of the previous
+ones. This is known as {\it virtual GPU}.
+% If the code stop at here, it is said ``to target to virtual GPU''.
+In summary, \verb!compute_x.y! tells the software support, and
+\verb!sm_x.y! tells the hardware support.  
+
+{\bf Example}: Geforce 800 has hardware that support feature described
+in \verb!compute_10!  (along with \verb!ISA_1!); Tesla C1060 has
+hardware that supports features described in
+\verb!compute_13!. % NVIDIA
+% GPUs are named as \verb!sm_!$xy$, with $x$ denotes the GPU generation
+% number, $y$ is the version of that generation.
+
+It seems that there is a one to one mapping from virtual GPU to real
+GPU architecture.  However, this correspondence is misleading, as when
+a new generation of architecture, say \verb!sm_21!, is released; it
+may has more cores, yet not provide any new functional improvement
+compared to \verb!sm_20!, thus no new compute architecture is
+necessary (NOTE: this is just an example).
+
+\begin{framed}
+  
+  \textcolor{red}{Here,} \verb!compute_xx!  \textcolor{red}{is for PTX}
+  (intermediate language), and \verb!sm_xx!
+  \textcolor{red}{is for cubin} (device-targeted binary code).
+  \begin{enumerate}
+  \item \verb!compute_10!: basic features
+  \item \verb!compute_11!: (1) debugging, (2) atomic memory operation on
+    global memory
+  \item \verb!compute_12!: (1) atomic memory operation on shared memory, and on
+  64-bit words in global memory, (2) warp vote instructions, (3) max(active
+  warps per SM) = 32, (4) max(active threads per SM) = 1024, (5) number of
+  32-bit registers per SM is 16384.
+  \item \verb!compute_13!: add double-precision floating-point operations
+  support
+  \item \verb!compute_20!: C++ support (with unified memory space for
+    shared, local, and global)
+  \end{enumerate}
+\end{framed}
+
+So, as you will learn in the next section, you can compile your code
+to the intermediate PTX code or direct to cubin code (target for a
+device with specific CC) or keep both. For example:
+\begin{enumerate}
+\item To compile the code to PTX of a specific CC, we use the
+  \verb!-arch!  option, e.g. \verb!-arch=compute_13!.
+\item To compile the code to cubin code of a specific CC, we use the
+  \verb!-code! option, e.g. \verb!-code=sm_11!.
+\end{enumerate}
+We will discuss in detail in Sect.~\ref{sec:nvcc}.
+
+\subsection{CC 1.0, 1.1 and 1.3}
+
+Tesla C870/D870/S870 has CC 1.0. 
+
+Tesla C1060/S1070/M1060 has CC 1.3.
+
+ 
+\subsection{CC 2.0 (Fermi)}
+\label{sec:CC2.0}
+
+CC 2.0 support better double-precision.  
+
+Fermi-based GPUs (Tesla C2050/C2070/M2050/M2070/M2075/M2090) have CC 2.0.
+
+
+
+
+\subsection{CC 3.0 (Kepler GK104)}
+\label{sec:CC3.0}
+
+Tesla K10 (GK104) has CC 3.0.
+
+Devices of this hardward support
+\begin{enumerate}
+  \item warp shuffle functions (exchange a variable between threads within a
+  warp, without the use of shared memory, moving 4bytes of data per thread -
+  so for 8bytes of data we need two separate invocations of the functions):
+  \verb!__shfl!, \verb!__shfl_up!, \verb!__shfl_down!, \verb!__shfl_xor!.
+  
+For more information of how to use these functions, check
+Sect.\ref{sec:lanes_thread}. 
+
+  \item 
+\end{enumerate}
+
+
+\subsection{CC 3.5 (Kepler GK110)}
+\label{sec:CC3.5}
+
+Tesla K20 (GK110 chip) has CC 3.5 (Sect.\ref{sec:GK110}).
+
+
+\subsection{CC 5.9 (Maxwell GM107)}
+\label{sec:CC5.0}
+
+Maxwell-based GM107 GPUs has CC 5.2 (Chap.\ref{chap:Maxwell_GPUs}). 
+
+\subsection{CC 5.2 (Maxwell GM204)}
+\label{sec:CC5.2}
+
+Maxwell-based GM204 GPUs has CC 5.2 (Chap.\ref{chap:Maxwell_GPUs}). 
+
+\section{Registers}
+\label{sec:registers-ptx}
+
+Register (\verb!.reg!) is fast storage location, and can not be
+addressable. 
+
+Registers may be typed (signed integer, unsigned integer, floating
+point, predicate) or untyped. 
+
+Register size is restricted; aside from predicate registers which are
+1-bit, scalar registers have a width of 8-, 16-, 32-, or 64-bits, and
+vector registers have a width of 16-, 32-, 64-, or 128-bits. 
+
+The most common use of 8-bit registers is with \verb!ld!, \verb!st!,
+and \verb!cvt! instructions, or as elements of vector tuples.
+
+\subsection{Special registers}
+\label{sec:special-registers}
+
+\verb!.sreg!
+
+\section{Constant memory}
+\label{sec:ptx_constantmemory}
+
+Constant memory (Sect.\ref{sec:constant-memory}) is organized into 11 banks,
+each with 64-KB.
+Banks are specified using \verb!.const![bank] modifier, where bank ranges form 0
+to 10 (bank zero is assumed by default). 
+
+Bank zero is used to assigned statistically-sized constant data. The
+remaining banks can be used to implement constant array with unknown
+size at compile. 
+\begin{lstlisting}
+.extern .const[2] .b32 const_buffer[];
+\end{lstlisting}
+means \verb!const_buffer! point to the start of bank 2 of constant
+memory. This pointer can then be used to access the entire 64-KB
+bank. 
+
+Multiple incomplete array variables declared in the same bank become
+alias, as they all point to the starting address of that
+bank. Example: load the second word in constant bank 2 into register 1
+\begin{lstlisting}
+ld.const[2].b32 %r1, [const_buffer+4]; // load second word
+\end{lstlisting}
+
+\section{Global memory}
+\label{sec:global-memory-1}
+
+We can get access using \verb!ld.global!, \verb!st.global! or
+\verb!atom.global! (atomic operation). 
+
+
+Threads wait at the barrier until all threads in the CTA have
+arrived. All memory writes prior to the \verb!bar.sync! instruction
+are guaranteed to be visible to any reads after the barrier
+instruction.
+
+
+
+\section{Parameters to kernel}
+\label{sec:parameters-kernel}
+
+Kernel function parameters differ from device function parameters in
+terms of access and sharing (read-only versus read-write, per-kernel
+versus per-thread).
+
+
+PTX ISA versions 1.x supports only kernel function parameters in
+\verb!.param! space; device function parameters were previously
+restricted to the register state space.
+
+The use of parameter state space for device function parameters was
+introduced in PTX ISA version 2.0 and requires target architecture
+\verb!sm_20!. PTX ISA version 2.0 extended the use of parameter space
+to device function parameters.  The most common use is for passing
+objects by value that do not fit within a PTX register, such as C
+structures larger than 8 bytes
+
+
+The location of parameter space is implementation specific.
+\begin{itemize}
+\item For example, in some implementations kernel parameters reside in
+  global memory. No access protection is provided between parameter
+  and global space in this case.
+\item Similarly, function parameters are mapped to parameter passing
+  registers and/or stack locations based on the function calling
+  conventions of the Application Binary Interface (ABI). Therefore,
+  PTX code should make no assumptions about the relative locations or
+  ordering of .param space variables
+\end{itemize}
+
+Values passed from the host to the kernel are accessed through these
+parameter variables using \verb!ld.param! instructions. These kernel
+parameters are shared across all CTA within a grid. 
+
+
+The address of a kernel parameter may be moved into a register using
+the mov instruction.  The resulting address is in the .param state
+space and is accessed using ld.param instructions
+
+Example: a ``foo'' kernel
+\begin{lstlisting}
+.entry foo ( .param .b32 N, .param .align 8 .b8 buffer[64] )
+{
+  .reg .u32 %n;
+  .reg .f64 %d;
+  ld.param.u32 %n, [N];
+  ld.param.f64 %d, [buffer];
+\end{lstlisting}
+
+
+\section{Texture memory}
+\label{sec:texture-}
+
+A texture is an object, that you need to bind data to it from host
+code, and the read it from the kernel.  The GPU hardware has a fixed
+number of texture bindings that can be accessed within a single
+program (typically 128).
+
+The \verb!.tex! directive will bind the named texture memory variable
+to a hardware texture identifier, where texture identifiers are
+allocated sequentially beginning with zero. However, using \verb!.tex!
+is deprecated, we should use \verb!.texref! instead. So
+\begin{lstlisting}
+.tex .u32 tex_a;
+\end{lstlisting}
+is equivalent to
+\begin{lstlisting}
+.global .texref tex_a;
+\end{lstlisting}
+
+Example:
+\begin{lstlisting}
+.tex .u32 tex_a; // bound to physical texture 0
+.tex .u32 tex_c, tex_d; // both bound to physical texture 1
+.tex .u32 tex_d; // bound to physical texture 2
+.tex .u32 tex_f; // bound to physical texture
+\end{lstlisting}
+
+Texture's base address is aligned to 16-byte boundary. 
+
+\section{Short vectors}
+\label{sec:short-vectors}
+
+Vectors of length 2 and 4 of any non-predicate fundamental type can be
+declared by prefixing the type with .v2 or .v4
+
+Vectors cannot exceed 128-bits in length; for example, .v4.f64 is not
+allowed
+
+Three-element vectors may be handled by using a .v4 vector, where the
+fourth element provides padding.
+
+\section{Structures/Objects}
+\label{sec:structuresobjects}
+
+Objects such as C structures and unions are flattened into registers
+or byte arrays in PTX and are represented using .param space memory
+\begin{lstlisting}
+struct {
+  double dbl;
+  char c[4];
+};
+\end{lstlisting}
+is mapped to
+\begin{lstlisting}
+.func (.reg .s32 out) bar (.reg .s32 x, .param .b8 .align 8 y[12])
+{
+.reg .f64 f1;
+.reg .b32 c1, c2, c3, c4;
+...
+ld.param.f64 f1, [y+0];
+ld.param.b8 c1, [y+8];
+ld.param.b8 c2, [y+9];
+ld.param.b8 c3, [y+10];
+ld.param.b8 c4, [y+11];
+...
+... // computation using x,f1,c1,c2,c3,c4;
+}
+
+//---------------------------------
+.param .b8 .align 8 py[12];
+...
+st.param.b64 [py+ 0], %rd;
+st.param.b8 [py+ 8], %rc1;
+st.param.b8 [py+ 9], %rc2;
+st.param.b8 [py+10], %rc1;
+st.param.b8 [py+11], %rc2;
+// scalar args in .reg space, byte array in .param space
+call (%out), bumpptr, (%x, py);
+\end{lstlisting}
+
+\section{PTX parser, e.g. Ocelot}
+\label{sec:Ocelot}
+
+A easy way to see how ocelot parses a PTX is compiling a program with
+--extern=all and passing a PTX file to PTXOptimizer, or CFG.
+
+PTX parsing is mostly:
+
+1st phase: read a PTX and generate a array of PTXStatements. I don't know much about this phase, sorry :(
+
+2nd phase: convert the array of PTXStatements to several PTXKernals, each with a CFG.
+
+- extractPTXKerneks(): finds kernel limits in code, call PTXKernel() constructors passing iterators with kernel limits
+- PTXKernel constructor: do some bookkeeping and call constructCFG() that does all heavy lifting. 
+
+A PTXParser contains a FLEX description of how to convert text (your code) into
+tokens, ana a BISON parser (convert token to PTXStatement when a pattern is
+matched). To make it more C++ friendly, there's a class PTXLexer. To know how to
+write a parser, you start with PTX ISA manual. 
+
+Lexer:
+http://code.google.com/p/gpuocelot/source/browse/trunk/ocelot/ocelot/parser/implementation/ptx.lpp
+
+Bison Grammar:
+http://code.google.com/p/gpuocelot/source/browse/trunk/ocelot/ocelot/parser/implementation/ptxgrammar.ypp
+
+PTXParser:
+http://code.google.com/p/gpuocelot/source/browse/trunk/ocelot/ocelot/parser/implementation/PTXParser.cpp
+
+
+\url{http://forums.nvidia.com/index.php?showtopic=182213}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

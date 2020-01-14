@@ -1,0 +1,214 @@
+\documentclass[11pt]{book}
+\usepackage{draftcopy} % PS or DVI
+% \usepackage{pdfdraftcopy} % PDF
+% http://filoxus.blogspot.com/2008/01/how-to-insert-watermark-in-latex.html
+\usepackage{amsmath} %Never write a paper without using amsmath for its many new commands
+
+\usepackage{amssymb} %Some extra symbols
+
+\usepackage{makeidx} %If you want to generate an index automatically
+%\usepackage{graphicx} %If you want to include postscript graphics
+\ifx\pdftexversion\undefined
+\usepackage[dvips]{graphicx}
+%%%%%%%% 
+%% To include .jpg and .pnm into latex
+%%%%%%%%%%%%%%
+\DeclareGraphicsExtensions{.jpg,.eps,.pnm}
+\DeclareGraphicsRule{.jpg}{eps}{.jpg.bb}{`jpeg2ps -h #1}
+\DeclareGraphicsRule{.pnm}{eps}{.pnm.bb}{`pnmtops #1}
+\else
+\usepackage{graphicx}
+\fi 
+  
+\usepackage{epsfig}
+
+\usepackage{color}  %Add color capabilities to fonts,e.g. \color{blue}{text something}
+\usepackage{listings} % Add typeset programs (programming code) within LaTeX.
+
+\usepackage{tabularx}
+%\usepackage{ucs}
+%\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\usepackage{chemarr}
+
+\usepackage{verbatim}
+
+\usepackage[version=3]{mhchem}
+\usepackage[style=2]{mdframed}
+
+\usepackage{mathtools}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+%\usepackage{mystyle} 
+%Create your own file, mystyle.sty where you put 
+% all your own \newcommand statements, for example.
+
+%\usepackage{url}
+\usepackage[hyphens]{url}
+           % usage \url{URL}
+
+%\usepackage[hypertex, dvips]{hyperref}       % does not work with LaTeX2HTML
+            % usage \href{URL}{text}
+\usepackage[breaklinks=true, linktocpage]{hyperref}              
+            
+            
+%\includeonly{chaptr2} %If you just want to process chaptr2.tex
+
+\usepackage{breakurl}  % used with dvips, not with pdflatex
+\usepackage{breakcites}
+
+\usepackage[all]{hypcap}
+%\graphicspath{{./images/}}
+
+\usepackage{lgrind}
+
+\usepackage[stable]{footmisc}
+
+\usepackage{multicol}
+
+\usepackage{fancyvrb}
+
+\usepackage{ulem} 
+% support : \uline, \sout, \uuline...
+\usepackage{soul}
+\usepackage{framed}
+\usepackage[numbers]{natbib}
+\usepackage{multicol} % for layout multicolumn on pages
+\usepackage{multirow} % for table spanning multicolumn, multirow
+%
+% http://andrewjpage.com/index.php?/archives/43-Multirow-and-multicolumn-spanning-with-latex-tables.html
+
+\usepackage{import} 
+
+
+%%% definition %%%%%%%%%%%
+\def\mus{{\mu\text{s}}}
+
+
+\begin{document}
+
+\author{Tuan, Hoang-Trong}
+\title{GPU Computing}
+\date{Jan 2009}
+
+\frontmatter
+\tableofcontents
+%\include{preface}
+
+\mainmatter
+% \lstset{language={[77]Fortran}, numbers=left, numberstyle=\tiny,
+%   stepnumber = 5, numbersep=5pt, keywordstyle=\color{blue}}
+
+\part{Part I: Architecture}
+
+\include{GPGPU_Architectures}
+\import*{../Reverse_Engineering/}{Library.tex}
+\include{PTX_lang}
+\import*{../Android/}{SoC.tex}
+\include{Tegra_SoC}
+\import*{../Android/}{AppleA.tex}
+\include{Linux_kernel_support}
+ 
+\part{Part II: Language/Extension}
+
+\lstset{language={C}, numbers=left, numberstyle=\tiny,
+  stepnumber = 5, numbersep=5pt, keywordstyle=\color{blue}}
+\include{Graphics_Languages}
+\include{CCUDA}
+\include{CUDAdriverAPI}
+\include{FCUDA}
+\include{CUDA_Cpp}
+\include{CUDA_CSharp}
+
+\include{OpenCL}
+
+\import*{../C-Cpp_Manual/}{Compile.tex}
+
+
+\part{Part III: Code abstract Level}
+
+\lstset{language={[77]Fortran}, numbers=left, numberstyle=\tiny,
+  stepnumber = 5, numbersep=5pt, keywordstyle=\color{blue}}
+\include{AcceProgModel}
+\include{CUDAFortranC}
+\include{CUDA_Windows}
+\include{OpenACC}
+
+\part{Part IV: GPU-GPU, node-node}
+\include{Multiple_GPUs}
+\include{CUDA_Samples}
+\import*{../Parallel_Programming/}{MPI_Extension.tex}
+
+
+\part{Part V: Graphics}
+ 
+\include{CUDA_Graphics}
+\include{VSCSE}
+\include{DirectCompute}
+\include{Video_codecs}
+
+\part{Part VI: Benchmark/Profile}
+%\part{Benchmarking \& Tools}
+\include{Timing_CUDAcode}
+\include{Debug_Tools}
+\include{ProfilingTool}
+\include{Benchmark_Leak}
+\include{Benchmark_ECC}
+\include{TroubleShooting}
+
+\part{Part VII: Packages for CUDA}
+\import*{../Probability/}{Differentiation.tex}
+\import*{../Fortran_Manual/}{Integration.tex}
+\import*{../Fortran_Manual/}{ODE.tex}
+\import*{../Fortran_Manual/}{PDE.tex}
+\include{cuBLAS}
+\include{cuFFT}
+\include{Thrust}
+\include{cuDPP}
+\include{CULA}
+\include{cuSP}
+\include{NPP}
+\include{matCUDA}
+\include{cuRAND}
+\include{Package4CUDA}
+
+
+% 
+% \part{Applications}
+% \include{MedicalPhysics}
+% \include{UltraSound}
+% \include{MicroEmboli_Detection}
+
+%\part{Appendix}
+%\include{Appendix}
+%\include{CUDAonWindows}
+Convention:
+
+\begin{itemize}
+\item Text with \textcolor{red}{red color}: obsolete feature,
+  statement...
+\item Text with \textcolor{green}{yellow color}: not available in this version
+\end{itemize}
+\backmatter 
+%\include{glossary}
+%\include{notat}
+\bibliographystyle{amsalpha} %The style you want to use for references.
+\bibliography{../ref_Fortran} %The files containing all
+                                %the articles and books you ever
+                                %referenced. 
+\printindex %Make an index AUTOMATICALLY
+
+\end{document} 
+
+% The share memory maps to the
+% scratchpad memory of the GPU, and is local to each thread block.
+
+% The texture memory use GPU texture caching and filtering capabilities,
+% best utilized with data access patterns exhibiting 2D locality (how
+% about 3D????)
+
+% Logical threads can be divergent via a stack-based reconvergence
+% algorithm with masked execution[3]

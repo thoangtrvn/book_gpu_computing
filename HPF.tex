@@ -1,0 +1,39 @@
+
+\chapter{High Performance Fortran}
+\label{chap:high-perf-fortr}
+
+
+\section{Introduction}
+\label{sec:introduction-2}
+
+
+High Performance Fortran is an extension to Fortran language that
+supports parallel computing. It allows user to insert directives into
+Fortran 90 codes which specify the distribution of data among the
+processors. Currently, most HPF products are source translator, rather
+than a true compiler. In other words, HPF products translate the
+sources with HPF directives into the source, which calls to PVM or
+MPI, that can be read by a compiler without native HPF capability.
+
+It provides some new constructs:
+\begin{enumerate}
+\item new Fortran statements: FORALL
+\item create PURE (side effect free) procedures
+\item compiler directives for recommended distribution of array data
+\item additional libraries
+\end{enumerate}
+
+The runtime performance of HPF codes vary from vendor to vendor. 
+
+
+\section{Compilers}
+\label{sec:compilers}
+
+
+PGI Fortran: pghpf
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

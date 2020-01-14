@@ -1,0 +1,59 @@
+
+\chapter{NVIDIA GPUs}
+\label{chap:nvidia-gpus}
+
+
+\section{C1060}
+\label{sec:c1060}
+
+Tesla C1060 is based on Tesla T10 GPU, which uses PCI Express (PCI-e) 2.0x16
+bus with bandwidth: 
+
+Maximum processing performance: 933 GFLOPs/sec (single precision).
+
+RAM GDDR3 4GB with bandwidth: 102GB/sec; and I/O memory interface:
+512-bit.
+
+Number of cores: 240 (divided into 8 SM, each SM has 30 cores)
+
+
+\section{Fermi (Tesla C20)}
+\label{sec:fermi}
+
+Fermi card is based on NVIDIA T20 GPU. NVIDIA plan to manufacture two
+versions: C2050 and C2070. They use PCI Express (PCI-e) 2.0x16
+
+Maximum processing performance: 520-630 GFLOPs/sec (double-precision).
+
+RAM GDDR3 with ECC (error checking) support (can be enable/disabled by
+end user). With ECC enabled, some memory is used for ECC bits. The I/O
+memory interface is 384-bit. 
+
+Number of cores: 448 (core clocks from 1.25GHz to 1.40 GHz, while with
+Tesla is 1.296GHz)\footnote{previously, it was widely believed that it
+  would feature 512 cores}. In turns, it consumes less energy (1.05V, compared
+with 1.1875V in Tesla). 
+
+References:
+\begin{itemize}
+\item \url{http://www.nvidia.com/docs/IO/43395/BD-04983-001_v01.pdf}
+\end{itemize}
+\subsection{C2050}
+\label{sec:c2050}
+
+RAM GDDR5 3G with bandwidth: 170 GB/sec. RAM decreases to 2.625GB, if
+enable ECC.
+
+\subsection{C2070}
+\label{sec:c2070}
+
+RAM GDDR5 6G with bandwidth: 6 GB/sec. RAM decreases to 5.25GB if
+enable ECC.
+
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

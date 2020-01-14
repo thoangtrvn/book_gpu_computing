@@ -1,0 +1,1273 @@
+%%
+%% AcceProgModel.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Tue Nov 10 10:18:34 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+
+\chapter{Accelerator Programming Model}
+\label{chap:accel-progr-model}
+
+References:
+\begin{enumerate}
+\item \url{http://www.pgroup.com/lit/articles/insider/v1n1a1.htm}
+
+\end{enumerate}
+
+
+\section{Introduction: Accelerator Programming Model (APM)}
+\label{sec:introduction-1}
+
+With the advance in computer hardware, especially special-purpose
+high-throughput computing device like GPU, there is an emerging in the number of
+different parallel programming models. In this chapter, we will discuss {\bf
+Accelerator Programming Model} (APM) developed by PGI for Fortran programming
+language (since version 9.0-4, with version 10.1 is the first to support full
+specification v1.0). The special-purpose computing device is called {\bf
+Accelerator} (Sect.\ref{sec:Accelerator}) to which the CPU can offloads data and
+have it to carry out the computing.
+
+\subsection{What is Accelerator}
+\label{sec:Accelerator}
+
+In the context of APM, an Accelerator  is defined as a device that can
+offload and process the works from CPU.
+\textcolor{red}{In essence, an Accelerator is typically a
+{\it co-processor} to the host (the CPU); it has its own instruction
+sets, and usually (but not always) its own memory}.
+So, an Accelerator can be another CPU, either homogeneous or
+heterogeneous, or GPU. Nowadays, an Accelerator fits on a single chip
+like a CPU, e.g. Sony/Toshiba/IBM Cell Broadband Engine
+vs. GPUs. Current APM (v1.1) supports CUDA-capable NVIDIA cards only.
+
+\subsection{What is kernel}
+
+The code run on the Accelerator is called the {\bf kernel}.  
+
+For the current implementation of APM, parallelism is exploited between multiple
+iterations of the kernel, not between multiple kernels.
+
+\subsection{How APM works?}
+
+PGI APM use a list of OpenMP-like directives to direct the compiling process,
+allowing the compiler to know which part of the codes to be compiled for running
+on the accelerator and which for running on the CPU. This is a precursor
+to OpenACC (Chap.\ref{chap:openACC}),  which is an open standard.
+
+APM, by using directives, allows programmers to maintain a single source code
+which can be compiled to run either on CPU or GPU. In essence, APM defines some
+directives for programmers to defined which code to run on CPU and which one to
+run on GPU. Via a preprocessing process, the appropriate codes will be extracted
+to be compiled for the CPU (if user want the program to run on CPU), or to
+compile for the GPU (if user wants the program to run on GPU).
+
+NOTE: APM does not make parallel programming easy, but it does reduce
+the cost of making it parallel, i.e. we don't have to be a heroic
+programming expert. 
+
+\subsection{Hardward/Software requirements}
+\label{sec:hardw-requ-1}
+
+Currently, APM v1.0 only support x64 systems, with specific OSs (check
+the documentation). When you program, there are also other
+restrictions; yet for now, restrictions on hardware and requirements
+for software are mentioned
+
+\begin{enumerate}
+\item A 64bit X64 system (single or multicore) with a Linux
+  distribution, support both by PGI and NVIDIA, e.g. RedHat, OpenSUSE,
+  Fedora, Ubuntu, SLES.
+\item A CUDA-capable card, e.g. NVIDIA Tesla
+\item Install appropriate both CUDA software (CUDA driver, CUDA
+  toolkit, CUDA SDK) and PGI compiler.
+\end{enumerate}
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+Tesla second generation (Tesla with Compute Capability 1.3) has some
+limitations\footnote{\url{http://www.pgroup.com/resources/accel.htm}}.
+\begin{enumerate}
+\item do not support function calls inside the kernel, except for
+  {\it inlined} functions. 
+\item do not work well with rounding modes, and some operations.
+  % (square root, exponential, logarithm, transcendental functions). 
+Here are the list of supported intrinsic functions
+\begin{verbatim}
+ABS, ACOS, AINT (truncation to the whole number), 
+ANINT (nearest whole number), ASIN, ATAN, ATAN2, 
+COS, COSH, DBLE (convert to double precision), 
+DPROD(double precision real product), EXP, 
+IAND (bit-by-bit logical AND), IEOR (bit-by-bit XOR), 
+INT, IOR, LOG10, MAX, MIN, MOD, NINT, NOT, REAL, 
+SIGN, SIN, SQRT, TAN, TANH
+\end{verbatim}
+\end{enumerate}
+
+{\bf Something about Compute Capability}: G80 has CC 1.0, G8x/G92 has
+CC 1.1, GT200 has CC 1.3 (which supports FP64 ALUs). They don't have
+any devices with CC 1.2; probably intentionally reserved for a future
+low-end parts that do not support FP64 ALUs. CC is all about
+hardware's capability. CUDA version, on the other hand, is about
+software (including driver, toolkit...). We may have CUDA version 2.0,
+or 2.3. \sout{The latest one is 2.3.1.} The latest one is 3.0.
+
+A good reference for all CUDA programmers is
+here\footnote{\url{http://www.beyond3d.com/content/reviews/51}}. 
+
+\subsection{How Accelerate works}
+\label{sec:how-accelerate-works}
+
+It will compile your code to a portable intermediate format. This
+format is the same for different applications (graphics,
+games...). The code will be dynamically translated and reoptimized at
+runtime by the drivers supplied by the vendors for a particular model
+of the GPU.
+
+List of Accelerate-enabled GPU cards is
+\hyperref[http://www.nvidia.com/object/cuda_learn_products.html]{here}. Currently,
+with APM v1.0, the Accelerator must be CUDA-capable GPU card(s).
+
+The host must coordinate the execution
+\begin{enumerate}
+\item allocate memory on the accelerator
+\item initialize data transfer
+\item send the kernel code to the accelerator
+\item pass kernel arguments
+\item queues the kernel
+\item wait for the completion of the kernel
+\item transfer necessary result back to the host
+\item deallocate the memory
+\end{enumerate}
+
+\section{Enable APM support}
+\label{sec:enable-accelerator}
+
+\subsection{In code}
+\label{sec:code}
+
+These are the accelerator runtime libraries:
+\begin{enumerate}
+\item In C: include to \verb!accel.h!
+\item In Fortran: interfaces declarations are provided in the file
+  \verb!accel_lib.h!, and in a Fortran module named \verb!accel_lib!
+\end{enumerate}
+% \section{Makefile}
+% \label{sec:makefile}
+In the code you need to use \verb!accel_lib! module
+\begin{lstlisting}
+#ifdef _ACCEL
+        use accel_lib
+#endif 
+
+...
+
+#ifdef _ACCEL
+! set the device for each process
+      numdevices = acc_get_num_devices(acc_device_nvidia)
+!     mydevice = mod(myRank,numdevices)
+      call acc_set_device_num(mydevice,acc_device_nvidia)
+#endif 
+\end{lstlisting}
+To use the preprocessor directives (\verb!#ifdef...#endif!) in Fortran
+code, you need to compile the program with \verb!-Mpreprocess!
+compiler option.
+
+\subsection{In linking + compiling}
+\label{sec:linking-+-compiling}
+
+If your code has APM directives, and you want the code to be compiled
+to PGI Unified Binary for accelerator, you link it to the accelerator
+libraries using the ``-ta'' flag. Currently, it supports only NVIDIA
+GPU Card.
+
+\begin{lstlisting}
+pgf95 -ta=nvidia -Minfo=accel
+\end{lstlisting}
+
+There are several other options that you need to know to tune
+Accelerate matching your need.  The best way is to play with them and
+test the performance of the compiled file.
+\begin{itemize}
+\item \verb!-ta=nvidia[,suboption],host!, with suboption for NVIDIA
+  CUDA-capable GPU can be either
+  \begin{enumerate}
+  \item \verb!analysis!: analysis only, no code generation
+  \item \verb!cc10!, \verb!cc11!, \verb!cc13!, (since PGI 10.4)
+    \verb!cc20!: select the appropriate
+    \hyperref[sec:compute-capability]{compute capability}.
+  \item \verb!fastmath!: use routines from the fast math library
+    (faster, yet less precision)
+  \item \verb!keepgpu!: keep the kernel source file
+  \item \verb!keepptx!: keep the portable assembly file (.PTX) for the
+    GPU code.
+  \item \verb!maxregcount:n! (maximum number of registers to be used),
+    system managed by default.
+  \item \verb!mul24! (use only low 24-bits of the two integer X,Y for
+    multiplication, \verb!mul24(X,Y)!; this can save time if X,Y in
+    the kernel is in the range $[-2^{23},2^{23}-1]$)
+  \item \verb!nofma! (no use of fused-multiply-add instruction - FMA
+    can increase the precision of the computation)
+  \item \verb!time! (this tell the compiler to link in a timer
+    library, so that when the program runs, it prints out simple timing
+    information for profiling the accelerated kernel)
+
+NOTE: Until Fortran 10.1, you need to either (1) link to
+``/opt/pgi/linux86-64/10.1/lib/kvprint.o'', (2) use `pgf90 -Mmpi'' 
+
+  \end{enumerate}
+\item \verb!-fast! : use fast math library (for computation in CPU).
+\item \verb!-O3!: for optimized code.
+\item \verb!-tp=...! : to target the binary code to a specific
+  processors, e.g. for AMD Opteron with revision E,
+  \verb!-tp=k8-64e!. As APM can detect this automatically, use this
+  just in case you want the compiled program to run on a different
+  machine with a different architecture.
+\item \verb!-Minfo=accel!: display compiling
+  information for Accelerate. You can also limits the information to
+  be displayed by using ``-Minfo=...'' with ... can be ``loop'', ...
+\item \verb!-Minfo! is equivalent to 
+\begin{lstlisting}
+-Minfo=accel,inline,ipa,loop,lre,mp,opt,par,unified,vect
+\end{lstlisting}
+\end{itemize}
+
+\subsection{Tips and Tricks}
+\label{sec:tips-tricks}
+
+{\bf Tips and Tricks}:
+\begin{enumerate}
+\item If the NVIDIA GPU is off, for the first accelerator region, it
+  takes 0.5 to 1.5 seconds to warm up the GPU (from a power-off
+  condition). To avoid this, we run \verb.pgcudainit. program in the
+  background.
+\item You can generate a single binary file that include two versions
+  (one to work on CPU, the other to work on GPU), you compile with the
+  option \verb!-ta=nvidia,host!. Then you can use \verb.ACC_DEVICE. to
+  specify whether the compiled program use GPU or CPU (see below).
+\item If the compiled program contains two versions of the code, you
+  can control whether to use GPU or CPU by setting the environment
+  variable \verb.ACC_DEVICE. to {\bf NVIDIA} (run on GPU) or
+  {\bf HOST} (run on CPU). NOTE: NVIDIA or HOST is case insensitive.
+\item If the program use the GPU and your machine has more than one
+  NVIDIA CUDA-capable GPU, you can tell which device to use via the
+  environment variable \verb!ACC_DEVICE_NUM! (its value is a
+  non-negative integer value)
+\item Regardless of the environment variable setting described above,
+  the programmer can explicitly specify in the code using the
+  following functions
+  \begin{enumerate}
+  \item \verb!acc_get_device! 
+  \item \verb!acc_get_num_devices!
+  \item \verb!acc_init!
+  \item \verb!acc_on_device!
+  \item \verb!acc_set_device!
+  \item \verb!acc_set_device_num!
+  \item \verb!acc_get_device_num! (new in PGI 10.5): return the ID of
+    the device being used to execute an accelerator region. 
+  \end{enumerate}
+\item After finish using the Accelerator, a programmer should shutdown
+  the connection and free up memories using \verb!acc_shutdown!
+\item To print out a message whenever the program launches a kernel,
+  we set the environment variable \verb.ACC_NOTIFY. to a non-zero
+  integer value.
+\item It is recommended to fully specify the dimension of the array in
+  all APM clauses. 
+\end{enumerate}
+
+
+\section{Fortran version}
+\label{sec:fortran-version}
+
+
+\subsection{9.04}
+\label{sec:9.04}
+
+At version 9, only a few directives have been implemented.
+\begin{enumerate}
+\item \verb.!$acc region.
+
+\end{enumerate}
+
+\subsection{10.0}
+\label{sec:10.0}
+
+At version 10, many other features have been added
+
+\begin{enumerate}
+\item \verb.!$acc data region.
+\item \verb.!$acc update.
+\item loop scheduling: unroll, shortloop, cache
+\item runtime routines: \verb.acc_shutdown., \verb.acc_on_device.
+\end{enumerate}
+
+\subsection{10.1}
+\label{sec:10.1}
+
+At version 10.1, the full APM v.1.0 standard is now supported.
+
+\subsection{10.3}
+\label{sec:10.3}
+
+Support APM v.1.1 standard.
+
+\subsection{10.4}
+\label{sec:10.4}
+
+
+Support APM v.1.2 standard.
+
+\section{Directives}
+\label{sec:directives-1}
+
+Similar to OpenMP, PGI Accelerate Programming Model (APM) contains a
+set of directives. The model can be used with either Fortran or C
+language. Directive in Fortran are {\it sentinels} (stylized comment)
+while those in C conform with \verb!#pragma!  syntax.
+\textcolor{red}{In this chapter, we will discuss directives for Fortran
+  only.}
+
+Directives tell the regions of codes or program units to be converted
+to {\bf kernels} which run on Accelerator, e.g. GPU or CPU. Using
+directives, APM provides a {\it fine-grained
+  control}\footnote{control
+  the execution of loops}
+over the mapping of loops, allocation of memory, and optimization for
+the GPU memory hierarchy.
+\textcolor{red}{It's important to know that not all regions of codes
+  can be converted to kernels.}
+Such restrictions will be described in subsequent sections.
+
+A segment of code (containing loops), in order to be parallelized to
+run on an accelerator need to be surrounded by a pair of directives,
+except the case when
+\hyperref[sec:define-decl-data]{implicit data region} is used
+(\verb.!$acc.)\footnote{This is not available until PGI Fortran 10.1}.
+Normally, the code contains one or more DO loops which can contain
+other DO loops; each loop body is intended to map onto a kernel and
+the loop iterations map to the kernel domain (i.e. threads). In other
+words, each thread will execute a single loop iteration. Thus, the
+result must not depend upon the order of execution for each iteration.
+
+If the source file is free-form, then you can use \verb.!$acc.. In
+fixed-form source, you can use three different sentinels
+\verb.!$acc, c$acc., or \verb!*$acc!.  Another important point is that
+if the source file is in {\bf fixed-form format}, the sentinel need to
+be in column 1-5.
+
+\begin{verbatim}
+!$acc directive-name [clause [[,] clause] ... &
+!$acc     continuation-from-the-previous-line
+  the code to be parallelized
+!$acc end directive-name
+\end{verbatim}
+Each directive has only one directive-name and, optionally, one or
+more clauses. The directive-name can be either
+
+\begin{enumerate}
+\item \hyperref[sec:do-loop-mapping]{do}: telling how to manipulate
+  the single DO loop coming right after the directive. 
+\item \hyperref[sec:define-region]{region} : an accelerator compute
+  region to be parallelized.
+% \verb!region!
+\item \verb!data region!: 
+\item \verb!region do!
+\end{enumerate}
+
+In Fortran, by default, the directives are case-insensitive. If
+case-sensitive is enabled, all keywords must be in lower cases. Also,
+they must not be intervened with any continued statements.
+
+{\bf TERMS}:
+\begin{enumerate}
+\item A structured block is a statement of a compound statement with a
+  single entry at the top and single exit at the bottom. In C, a
+  structured block is enclosed by \{  and \}. 
+\end{enumerate}
+% There are three types:
+% \begin{enumerate}
+% \item A region to be parallelized
+% \item A 
+% \end{enumerate}
+\subsection{DO loop mapping}
+\label{sec:do-loop-mapping}
+
+DO loop mapping is done via the \verb.!$acc do. directive and it must
+be within an Accelerator compute region
+(Sect.~\ref{sec:define-region}). Otherwise, it is ignored, and runs on
+host. 
+
+When a single DO loop is inside a compute region, the APM model
+provides MIMD parallelism ({\it doparallel}) and SIMD parallelism
+({\it dovector}).  Thus, it allows the programmer to map a single DO
+loop to parallel mode or vector mode, or specify that a loop should be
+strip-mined\footnote{strip-mining or loop sectioning is a technique
+  that splitting a single loop to a nested loop. The number of
+  iterations of the inner loop is know as the loop strip's length or
+  width}
+(using either {\it unroll} or {\it ...}). Or you specify the loop to
+be executed in sequential.
+
+NOTE: The DO loop must precede right after the directive. The syntax
+is
+% \begin{lstlisting}
+% !$acc do [clause [, clause]...]
+%    DO loop
+% \end{lstlisting}
+
+\begin{lstlisting}
+!$acc do [clause [, clause] ...]
+  DO i=start, end [,step]
+   ....
+  END DO
+\end{lstlisting}
+with the {\it clause} can be (note: [ ] means optional)
+\begin{enumerate}
+\item \verb!host! [(width)] : execute the loop sequentially on the
+  CPU. If {\it width} is used, the loop is strip-mined. 
+
+Example\footnote{\url{http://software.intel.com/en-us/articles/strip-mining-to-optimize-memory-use-on-32-bit-intel-architecture/}}:
+\begin{lstlisting}
+ for (i=0; i<Num; i++) { 
+   Transform(v[i]); 
+ } 
+
+ for (i=0; i<Num; i++) { 
+   Lighting(v[i]); 
+ } 
+\end{lstlisting}
+Then, strip-mining with the width = \verb!strip_size!. 
+\begin{lstlisting}
+ for (i=0; i < Num; i+=strip_size) { 
+   for (j=i; j < min(Num, i+strip_size); j++) { 
+     Transform(v[j]); 
+   } 
+   for (j=i; j < min(Num, i+strip_size); j++) { 
+     Lighting(v[j]); 
+   } 
+ } 
+\end{lstlisting}
+
+\item \verb!seq! [(width)]: execute the loop sequentially on the
+  Accelerator, if {\it width} is used, the loop is strip-mined. 
+
+\item \verb!vector! [(width)]: strip-mine the loop to run on
+  Accelerator in vector more (synchronous parallelism) with the best
+  possible \verb!strip_size! value which is
+  accelerator-dependent. Normally, it's the maximum possible
+  value. Some Accelerator limits this value, e.g. to 256 maximum.
+\begin{lstlisting}
+!$acc do vector 
+   do i = 1,n
+
+!!! the compiler change to this
+do is = 1,n,256 
+  !$acc do vector 
+   do i = is,max(is+255,n)
+
+\end{lstlisting}
+  You may also specify the strip length you want via the \verb!width!.
+
+\item \verb!parallel! [(width)]: the loop is executed in parallel mode
+  on the Accelerator (\verb!doall! parallelism) with maximum number of
+  loops to be allowed. You can also set the limits of iterations to
+  run in parallel via the width option.
+\begin{lstlisting}
+!$acc do parallel 
+  do i = 1,n
+
+\end{lstlisting}
+
+
+\item \verb!unroll! (width) : similar to strip-mining, yet no nested
+  loop is created
+\begin{lstlisting}
+DO i = 1,n
+ a[i] = b[i] + c[i]
+ENDDO
+\end{lstlisting}
+switch to
+\begin{lstlisting}
+DO i = 1, n, 2
+  a[i] = b[i] + c[i]
+  a[i+1] = b[i+1] + c[i+1]
+ENDDO
+\end{lstlisting}
+
+NOTE: If there are other clauses also, all but one must have
+\verb!width! argument. Some requires the value of the \verb!width!
+argument be a power of 2 or multiple of a power of 2. 
+
+\item \verb!independent! : if we know the loop iterations are
+  independent, we can explicitly tell the compiler to generate code in
+  parallel. 
+
+NOTE: It is a programming error if any iteration write to a variable
+or array element that any other iteration also write or
+read. E.g. this is ERROR
+\begin{lstlisting}
+!$acc do independent 
+DO i =2,n
+  a[i] = a[i] + a[i-1]
+ENDDO
+\end{lstlisting}
+
+\item \verb!kernel! : tell that this loop is the body of the
+  computational kernel. Any nested loop will be executed sequentially
+  on the accelerator. 
+
+NOTE: Nested loops cannot have any other \verb.!$acc! directives. 
+
+\item \verb!shortloop! : use this clause if the number of loops is
+  known to be less than the maximum value supported in \verb!parallel!
+  and \verb!vector! clauses. 
+
+\item \verb!private! (list) : tell which variable, arrays, or
+  subarrays to be allocated on device for each iteration of the
+  loop. Though the dimension can be detected by the compiler, it's
+  recommended to explicitly tell the dimensions.
+
+NOTE: The compiler may pad dimension to improve memory alignment and
+program performance. 
+\item \verb!cache! (list): even though CUDA decides which variables to
+  put in the cache, the \verb!cache! clause can help the compiler
+  choose what data to keep in the fast memory during the loop. 
+
+NOTE: This doesnot guarantee all the variables, arrays or subarrays in
+the list to be cached. 
+\end{enumerate}
+
+You can also use more than one clauses
+\begin{lstlisting}
+!$acc do host(16), parallel 
+  do i = 1,n
+
+!!! the compiler strip-mine the loop to 16 host iterations, 
+!!! with the parallel clause apply to the inner loop
+ns = ceil(n/16) 
+!$acc do host 
+  do is = 1, n, ns 
+   !$acc do parallel 
+     do i = is, min(n,is+ns-1)
+\end{lstlisting}
+
+Example:
+\begin{lstlisting}
+!$acc region copyin(s(1:n,1:m)) copyout(r)
+ !$acc do parallel,vector(8)
+ do j = 2,m-1
+  !$acc do parallel,vector(8)
+  do i = 2,n-1
+   r(i-1,j-1) = 0.25*(s(i-1,j) + s(i+1,j) & 
+                    + s(i,j-1) + s(i,j+1))
+  enddo
+ enddo
+!$acc end region
+\end{lstlisting}
+
+\begin{lstlisting}
+!$acc region
+ !$acc do parallel
+ do j = 2,m-1
+  !$acc do vector
+  do i = 2,n-1
+   r(i-1,j-1) = 0.25*(s(i-1,j) + s(i+1,j) &
+            + s(i,j-1) + s(i,j+1))
+  enddo
+ enddo
+!$acc end region
+\end{lstlisting}
+
+% {\bf REMARK}: Without a clause, the compiler will automatically an
+% appropriate schedule. 
+% \begin{enumerate}
+% \item If you don't want the loop to be executed on the accelerator,
+%   you \verb!host! clause.
+% \begin{lstlisting}
+% !$acc do host
+%   do = .....
+%   enddo
+% \end{lstlisting}
+
+% \end{enumerate}
+
+% {\bf Strip-mining}: 
+% \begin{lstlisting}
+% DO I = 1, 10000
+%   A(I) = A(I) * B(I)
+% ENDDO
+
+% !!! strip length of 1000
+% DO IOUTER = 1, 10000, 1000
+%   DO ISTRIP = IOUTER, IOUTER+999
+%     A(ISTRIP) = A(ISTRIP) * B(ISTRIP)
+%   ENDDO
+% ENDDO
+% \end{lstlisting}
+% The common program unit that can be parallelized is the DO loop. This
+% directive applies to a single DO loop only, and the DO loop must
+% precede right after the directive. The syntax of the directive is
+
+% The clauses can be
+% \begin{enumerate}
+% \item host [(width)] : 
+% \item parallel [(width)] 
+% \item seq [(width)] 
+% \item vector [(width)] 
+% \item unroll (width) 
+% \item kernel 
+% \item shortloop 
+% \item private( list ) 
+% \item cache( list )
+% \end{enumerate}
+
+\subsection{Define a compute region}
+\label{sec:define-region}
+
+A compute region is a more general case to the DO loop
+mapping.
+\textcolor{red}{A compute region is a {\bf structured block} which
+  contains loops that can be compiled to run on the Accelerator}.
+
+\begin{lstlisting}
+!$acc region [clause, [clause]...]
+   
+   ! loops code here
+   
+!$acc end region
+\end{lstlisting}
+
+The compiler will analyze the code to determine which data to be
+copied to the device on the entry, and which to copy back on exit of
+the region. If the compiler fails to determine, it may fail to
+generate the equivalent code for the accelerator; and thus the code
+will run on host.
+
+\begin{lstlisting}
+!!! multiline directive
+
+!$acc region  copyin(b(:m,:m), c(:m,:m)),       &
+!$acc& copyout(a(start:end,:m))
+     do j = 1, m
+        do i = start,end
+            a(i,j) = 0.0
+        enddo
+
+       do i = start,end
+         do k = 1,m
+            a(i,j) = a(i,j) + b(i,k) * c(k,j)
+         enddo
+       enddo
+     enddo
+!$acc end region
+\end{lstlisting}
+For explicit control of how the compiler process the data, APM
+provides some additional {\it clause} to describe which data to be
+copied to the device, and which to be copied back to the host... Here
+are the list of {\it clauses}
+\begin{enumerate}
+\item \verb!if!(condition) : specify the condition on which the code
+  to run on Accelerator. Thus, two versions are created - one to run
+  on host, one to run on accelerator - and the appropriate one will
+  run depending on the condition checked at runtime.
+
+E.g. test if the number of iterations is large enough to run on
+Accelerator. 
+
+\item \verb!copy!(list) : which variables, arrays, subarrays to be
+  copied in and out
+\item \verb!copyin! (list) : which variables, arrays, subarrays to be
+  copied in only
+\item \verb!copyout! (list) : which variables, arrays, subarrays to be
+  copied back on exit
+\item \verb!local! (list) : which variables, arrays, subarrays to be
+  initiated and used in device memory only, don't copy it back to the
+  host.
+\item \verb!update device (list)! : which variables, arrays, or
+  subarrays to be copied to the device after each iteration
+\item \verb!update host (list)! : which variables, arrays, or
+  subarrays to be copied back to the host after each iteration
+\end{enumerate}
+For more information, read \hyperref[sec:clauses]{clauses}.
+
+
+{\bf SHOULD WE PARALLELIZE THE CODE}: 
+\begin{itemize}
+\item If there is/are operations that cannot be performed on the
+  accelerator, e.g. the accelerator doesnot support it, they will be
+  executed on the host. This may require data to be copied back and
+  forth between the host and device. This can degrade the
+  performance. Thus it is critical to examine the code to see if this
+  happens or not to decide whether it's better to leave the code to
+  run on CPU.
+
+\item The copied back and forth between the device and the host can be
+  overhead, so we use the kernel only when the data are being use
+  intensively. Otherwise, you can run the code on the host with
+  OpenMP, if the processor is multicore.
+\end{itemize}
+
+{\bf Example:}
+\begin{lstlisting}
+!$acc region
+  do i=1,n 
+     r(i) = a(i) * 2.0
+  enddo
+!$acc end region
+\end{lstlisting}
+
+\begin{lstlisting}
+!$acc region if(n .gt. 200)
+  do i=1,n 
+     r(i) = a(i) * 2.0
+  enddo
+!$acc end region
+
+!$acc region copyin(s(1:n,1:m)) copyout(r)
+ do j = 2,m-1
+  do i = 2,n-1
+   r(i-1,j-1) = 0.25*(s(i-1,j) + s(i+1,j) & 
+                    + s(i,j-1) + s(i,j+1))
+  enddo
+ enddo
+!$acc end region
+\end{lstlisting}
+
+
+{\bf RESTRICTIONS}:
+\begin{enumerate}
+\item A compute region CANNOT contain another compute region or a
+  data region (Sect.\ref{sec:define-data-regions}).
+\begin{lstlisting}
+     !!! THIS IS ERROR (no nested accelerator region)
+!$acc region     
+   ....
+   !$acc region 
+    ...
+   !$acc end region
+!$acc end region
+\end{lstlisting}
+% \begin{verbatim}
+% ERROR
+% !$acc region 
+%    !$acc region
+%     ...
+%    !$acc end region
+% !$acc end region
+% \end{verbatim}
+\item There is at most ONE \verb!if! clause inside the compute region
+  (result is LOGICAL in Fortran, and INTEGER in C)
+\item Order of the clause must not affect the evaluation of the code
+  region, i.e. there is no data dependency between the iterations of
+  the loops. 
+\item There is no branching into or out of the code region, e.g. no
+  GOTO statement. 
+\end{enumerate}
+
+\subsection{Define combined directive}
+\label{sec:define-comb-direct}
+
+When you want to specify a loop directive nested immediately inside an
+accelerator compute region, you can combine them
+\begin{lstlisting}
+!$acc region do [clause [,clause]...]
+ DO loop
+\end{lstlisting}
+
+The restrictions from those of compute region and DO loop mapping
+apply to the combined directive. 
+
+
+\subsection{Define data regions}
+\label{sec:define-data-regions}
+
+If, in different loops, they share the same data, it's better to keep
+the data in the kernel rather than copy it back to host after in the
+first loop and copy it to the Accelerator memory in the entry of the
+second loop. This can be done by wrapping the two loops inside a data
+region. 
+
+\subsubsection{Explicit data region}
+\label{sec:explicit-data-region}
+
+This feature is available since the version 1.0 of APM only. The
+directive below defines which data ({\bf mainly arrays}) to be
+allocated on the device memory, depending on the clauses being used,
+the data can be copied from the host or copied back, if required.
+
+\begin{lstlisting}
+!$acc data region [clause, [clause]...]
+
+   structured block or data region
+
+!$acc end data region
+\end{lstlisting}
+with clauses can be 
+\begin{enumerate}
+\item \verb!copy! (list)
+\item \verb!copyin! (list)
+\item \verb!copyout! (list)
+\item \verb!local! (list)
+\item \verb!mirror! (list) : (valid only in Fortran) the allocation
+  state of the data (e.g. unallocated, allocated) in the device should
+  be the same as that in the host. 
+
+\item \verb!update device! (list)
+\item \verb!update host! (list)
+\end{enumerate}
+
+{\bf RECOMMENDED}: It's recomended to include the dimension of the
+arrays in the clause also. If either the lower bound or the upper
+bound is missing, the declared or allocated bounds of the array, if
+available, is used.
+
+\begin{lstlisting}
+!$acc data region copyin(a(1:n, 1:m))
+
+!$acc end data region
+\end{lstlisting}
+
+{\bf RESTRICTIONS}:
+\begin{enumerate}
+\item A data region CAN contain other data regions or
+  compute region (Sect.\ref{sec:define-region}).
+
+\item A variable or array can appear in only one clause. However, a
+  single subarray of an array is allowed to appear in all data clause
+\begin{lstlisting}
+   !!! ERROR
+!$acc data region copyin(a(1:5,:)), copyout(a(2:4,1:3))
+   ...
+!$acc end data region
+
+   !!! OKIE
+!$acc data region copyin(a(1:5,:)), copyout(a(1:5,:))
+   ...
+!$acc end data region
+\end{lstlisting}
+
+\item If a variable, array, subarray appears in any clause of the data
+  region, it CANNOT appear in any enclosed regions, e.g. data regions,
+  compute region, DO loop mapping. 
+\begin{lstlisting}
+   !!! ERROR
+!$acc data region copyin(a(1:10,1:20))
+   ...
+   !$acc region copy(a(1:4,1:5))
+   ...
+   !$acc end region
+!$acc end data region
+\end{lstlisting}
+
+\item With \hyperref[sec:array]{assumed-size dummy array}, the upper
+  bound must be specified.
+
+\item Pointer array can be used in clauses, however, pointer
+  association is not guaranteed to preserve in device memory
+  $\rightarrow$
+  \textcolor{red}{it is recommended not use pointer array, though}.
+
+\item User doesn't have to pad data, the compiler will automatically
+  does that to improve memory alignment and performance gain.
+\end{enumerate}
+
+
+\subsubsection{Implicit data region (declarative data)}
+\label{sec:define-decl-data}
+
+In some cases, you want an array or arrays to be allocated on the
+device memory and stay there
+{\it during the whole execution of the subprogram unit (SUBROUTINE,
+  FUNCTION)}.
+As this apply to the whole body of the subprogram unit, user doesn't
+have to specify the region to be defined, aka
+{\bf implicit data region}.  Programmers can also choose whether the
+data should be copied from the host upon entry and/or be copied back
+to the host upon exit.
+% Within the section of a Fortran subroutine, function, or module, you
+% can define the variables to tell the compiler to allocate the data on
+% the device memory during the execution of the
+% subroutine/function/module, aka {\bf implicit data region} as there is
+% no region to be defined here. Further, it also tells whether the data
+% values are to be transferred from the host to the device memory upon
+% entry to the implicit data region, and from the device to the host
+% memory upon exit the implicit data region.
+\textcolor{red}{Where to put the directive?} - In Fortran, put them in
+the declaration section. In C, put them following the array
+declaration.
+
+\begin{lstlisting}
+!!! within a subroutine/funtion/module/...
+c put in the declaration section
+       integer :: i
+!$acc  declclause [, declclause ...]
+
+ !!!  your code here
+\end{lstlisting}
+with {\it declclauses} can be
+\begin{enumerate}
+\item \verb!copy! (list) : copyin + copyout
+\item \verb!copyin! (list)
+\item \verb!copyout! (list)
+\item \verb!local! (list) : allocated in device memory only (don't
+  care the values in the host memory)
+\item \verb!mirror! (list) : valid only in Fortran (subroutine,
+  function, module)
+\item \verb!reflected! (list) : valid only in Fortran subroutine or
+  function
+\end{enumerate}
+
+{\bf RESTRICTIONS}: 
+\begin{enumerate}
+\item subarray specifications are not allowed in {\it list} for
+this case.
+\item assumed-sized dummy arrays (arguments) cannot appear in the
+  declarative clauses. So, it is better to use fixed size dummy
+  arrays. 
+\item within the range of the implicit data region, the variables
+  defined in the {\it list} cannot appear in a data clause for any
+  other explicit data region.
+\item we use \verb!reflect! when we want to actual argument arrays
+  bound to the dummy argument arrays in the {\it list}
+
+\item Only \verb!mirror! can be used in a MODULE subprogram. All
+  others MAY NOT be used. 
+\item Pointers can be used in the list; however, pointer association
+  is not preserved in the device memory.
+\end{enumerate}
+
+% \subsection{Define a loop region}
+% \label{sec:define-loop-region}
+\subsection{UPDATE device-data}
+\label{sec:update-device-data}
+
+In a \hyperref[sec:define-data-regions]{data region}, at some points,
+you may want to copy the data in device memory to the host memory or
+from host to Accelerator, i.e. update the data. This can be done via
+the UPDATE directive.
+
+\begin{lstlisting}
+!$acc update updateclause [, updateclause]...
+\end{lstlisting}
+with updateclause can be 
+\begin{enumerate}
+\item \verb!host! (list) : copy data from device to host
+
+\item \verb!device! (list) : copy data from host to device
+\end{enumerate}
+with list is a comma-seperated list of variables, subarrays or
+arrays. Multiple subarrays of the same array can appear in the list. 
+
+{\bf RESTRICTIONS}: As this is an executable directive,
+\begin{enumerate}
+\item it must not appear in a statement \verb!if!, \verb!while!,
+  \verb!do!, \verb!switch!, \verb!label!.
+\item the items in the list must have a visible device copy. 
+\end{enumerate}
+
+% \subsection{Clauses}
+% \label{sec:clauses}
+
+% There are 5 different clauses
+% \begin{enumerate}
+% \item \verb!copy! (list): accept variables, arrays or subarrays.
+% \item \verb!copyin! (list): accept variables, arrays or subarrays.
+% \item \verb!copyout! (list): accept variables, arrays or subarrays.
+% \item \verb!local! (list) : data (variable, array, subarray) need to
+%   be allocated on the array, the values computed on the device are not
+%   need on the host and vice verse. 
+% \item \verb!mirror! (list) : **available only for data region*** it
+%   accept a list of array whose state must be mirrored to the device
+%   from the host. In particular, upon entry of the region, 
+%   \begin{enumerate}
+%   \item if the host array is allocated, the device copy of the
+%     array will also be allocated of the same size;
+%   \item if the host array is not allocated, the device copy of the
+%     array will also be initialized to an unallocated state.
+%   \item if the host array is allocated and deallocated within the
+%     region, the device copy of the array will also be allocated of the
+%     same size and/or deallocated at the same point in the region. 
+%   \end{enumerate}
+%   Upon exit of the region, the device copy will be automatically
+%   deallocated in any cases.
+% \item \verb!reflected! (list) 
+% \end{enumerate}
+% {\it list} is a comma-separated collection of variable names, array
+% names, or subarray specifications, i.e. arr(2:high, low:100). The
+% order of the clauses is not important.
+
+\section{Known limitations of APM}
+\label{sec:known-limit-apm}
+
+You should read Section 5 of the PGI APM manual. 
+
+\section{APM with MPI or OpenMP}
+\label{sec:apm-with-mpi}
+
+If you have multiple GPUs, you can utilize them all by writing a
+parallel program using both APM and either MPI or OpenMP.
+\begin{enumerate}
+\item Use \verb!acc_set_device_num! with the corresponding device num
+  is derived from the MPI rank value
+\item Use \verb!acc_set_device_num! with the corresponding device num
+  is the output of \verb!omp_get_thread_num!, i.e. each thread use a
+  different device.
+\end{enumerate}
+
+\section{Compiling and Debuging}
+\label{sec:compiling-debuging}
+
+You can set the system environment NVDEBUG to 1 to check for any
+possible error when you run a compiled program
+\begin{lstlisting}
+export NVDEBUG=1
+\end{lstlisting}
+
+The option you use to compile a parallel program using APM is 
+\begin{verbatim}
+-ta=target [options]
+\end{verbatim}
+with target can be
+\begin{itemize}
+\item nvidia
+\item host
+\end{itemize}
+and options can be
+\begin{itemize}
+\item 3.0 or 2.3 
+\item cc13 or cc20
+\end{itemize}
+
+To get the information when compiling we use
+\begin{verbatim}
+-Minfo=accel
+\end{verbatim}
+
+To get the information when running, we use
+\begin{verbatim}
+...??? 
+\end{verbatim}
+
+By default, the host code need to wait until the kernel to finish, you
+can override this by using the compiler option
+\begin{verbatim}
+-ta=nvidia:nowait
+\end{verbatim}
+However, you need to be careful when using this; and put the
+synchronization call at any place where you want the host code to
+wait. 
+
+Fermi card support fused multiply-add instruction (to improved
+accuracy). We can explicitly control this using
+\begin{verbatim}
+-ta=nvidia:nofma
+\end{verbatim}
+
+To increase the performance, at the cost of the accuracy, we can use
+fast math library
+\begin{verbatim}
+-ta=nvidia:fastmath
+\end{verbatim}
+
+
+
+\section{Coding samples}
+\label{sec:coding-samples}
+
+Here, we will discuss sample codes using PGI Accelerator Runtime
+Library routines. In Fortran, none of the Accelerator runtime library
+routines may be called from a PURE or ELEMENTAL procedure.
+
+May routines accept arguments or return value of this type
+\verb!integer(kind=acc_device_kind)! which can be assigned to one of
+the three predefined values: \verb!acc_device_none! (use no
+Accelerator), \verb!acc_device_default!  (use default Accelerator),
+\verb!acc_device_nvidia! (use NVIDIA GPU as Accelerator), and
+\verb!acc_device_host! (use host as Accelerator).
+
+\subsection{Number of available Accelerators}
+\label{sec:numb-avail-accel}
+
+You can check how many available Accelerators of a given device
+type. Currently, \verb!acc_device_nvidia! (or the default name is
+\verb!acc_device_default!) is the only supported device type.  
+\begin{lstlisting}
+#ifdef _ACCEL
+ use accel_lib
+ integer(kind=acc_device_kind) :: devicetype
+ integer :: num
+#endif
+
+#ifdef _ACCEL
+ devicetype = acc_device_default
+ num =  acc_get_num_devices( devicetype )
+#endif
+\end{lstlisting}
+Someones claim using the following is correct
+\begin{lstlisting}
+num = acc_get_device_num(acc_device_nvidia) 
+\end{lstlisting}
+
+\subsection{Select Device Type}
+\label{sec:select-device}
+
+You may have different types of Accelerator, as well as many
+Accelerator of the same type. So, to tell the program to run on a
+particular device, you need to specify (1) device type, (2) device ID
+of that type. We will discuss (1) first, and (2) is referred in the
+next section.
+
+You need to call this before any accelerator data or compute region,
+or after any \verb!acc_shutdown()! call.
+
+\begin{lstlisting}
+#ifdef _ACCEL
+  integer(kind=acc_device_kind) :: devicetype
+
+devicetype = acc_device_nvidia
+call acc_set_device ( devicetype )
+\end{lstlisting}
+
+{\bf NOTE}: If some accelerator regions are compiled to only use one
+device type, calling this routine with a different device type may
+produce undefined behavior.
+
+
+You can set it to the environment variable \verb!ACC_DEVICE! so that
+all programs in the machine use this device by default.
+\begin{verbatim}
+export ACC_DEVICE=NVIDIA
+\end{verbatim}
+
+\subsection{Select Device ID of a particular Device Type}
+\label{sec:select-device-id}
+
+You can do both select device type and device ID.
+
+\begin{lstlisting}
+use accel_lib
+include "lib3f.h"
+integer :: idevice
+integer(kind=acc_device_kind) :: devicetype
+
+IF (iargc() == 1) THEN
+   CALL getarg(1, arg)
+   READ(arg, '(I3)') idevice
+ELSE
+   idevice = 0
+ENDIF
+
+devicetype = acc_devicetype
+if (acc_get_num_devices(devicetype) > idevice) then
+   idevice = 0
+endif
+
+call acc_set_device_num(idevice, devicetype)
+\end{lstlisting}
+\verb!acc_set_device_num! implies a call to \verb!acc_set_device! with
+that device type argument.
+
+{\bf NOTE}: If the value of the second argument is zero, the selected
+device number will be used for all attached accelerator types.
+
+You can set it to the environment variable \verb!ACC_DEVICE_NUM! so
+that all programs in the machine use this device ID by default.
+\begin{verbatim}
+export ACC_DEVICE_NUM=1
+\end{verbatim}
+
+\subsection{Initialize the Accelerator}
+\label{sec:init-accel}
+
+The Accelerator is in hibernate if no program is using it. So, by
+default, the first compute region will imply an initializing to the
+device. It will take about 2ms for the device to warm up. In many
+cases, you don't want to add this time to the benchmark of the
+computation. So, you can explicitly call a subroutine to warm up the
+device first. 
+
+\begin{lstlisting}
+integer(kind=acc_device_kind) :: devicetype
+
+devicetype = acc_device_nvidia
+call acc_init(devicetype)
+\end{lstlisting}
+
+\subsection{Check which Accelerator in use}
+\label{sec:check-which-accel}
+
+To execute different path depending on whether the code is running on
+the host or on some accelerator, you can call to \verb!acc_on_device!
+
+\begin{lstlisting}
+devicetype = acc_device_nvidia
+
+if (acc_on_device(devicetype)) then
+   ! do this
+else
+   ! do that
+endif
+\end{lstlisting}
+
+\section{Profiling }
+\label{sec:profiling-}
+
+We can use \verb!pgcollect! to collect information about accelerator
+performance.
+
+In some Linux systems, if the CUDA driver for Accelerator hardware is
+in power-saving mode, it can take a significant amount of time to
+initialize, we can avoid this by
+\begin{itemize}
+\item use \verb!-accinit! for \verb!pgcollect!
+\begin{verbatim}
+pgcollect -time -accinit myaccelprog
+\end{verbatim}
+
+\item run \verb!pgcudainit! in the background.
+\end{itemize}
+
+\section{Using Fermi}
+\label{sec:using-fermi-1}
+
+
+Read more on Sect.~\ref{sec:using-fermi}. In addition, PGI
+Accelerator has a new feature that tell the occupancy on the GPU for
+different kernels during the compilations. 
+\begin{itemize}
+\item number of registers used by each thread
+\item shared memory used by each thread block
+\item number of threads in a threadblock
+\end{itemize}
+High occupancy does not guarantee high performance, but low occupancy
+almost certainly predicts low performance. Note that the occupancy
+depends on the compute capability, because high compute capabilities
+have more registers and other resources.
+\begin{verbatim}
+     12, Loop is parallelizable
+         Accelerator kernel generated
+          7, !$acc do parallel, vector(16)
+         11, !$acc do seq
+             Cached references to size [16x16] block of 'b'
+             Cached references to size [16x16] block of 'c'
+         12, !$acc do parallel, vector(16)
+             CC 1.0 : 17 registers; 2072 shared, 84 constant, 0 local
+             memory bytes; 33% occupancy
+             CC 1.3 : 17 registers; 2072 shared, 84 constant, 0 local
+             memory bytes; 75% occupancy
+             CC 2.0 : 22 registers; 2056 shared, 104 constant, 0 local
+             memory bytes; 83% occupancy
+\end{verbatim}
+
+References:
+\begin{itemize}
+\item \url{http://www.pgroup.com/lit/articles/insider/v2n2a1.htm}
+\end{itemize}
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

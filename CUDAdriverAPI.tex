@@ -1,0 +1,425 @@
+
+\chapter{CUDA driver API}
+\label{chap:cuda-driver-api}
+
+\section{Introduction}
+\label{sec:intro_cuda_driverAPI}
+
+{\bf IMPORTANT}: 
+\begin{enumerate}
+\item The CUDA C runtime API is implemented on top of driver
+  API. Sec.~\ref{sec:runtime-api} discuss CUDA C runtime APIs in
+  detail. Every runtime API has an equivalent driver API. However,
+  there are some driver API that are missing in the runtime
+  APIs. Thus, if you really need to use these functions, you can
+  easily converting your code from using runtime API to using driver
+  API easily, by changing prefix from \verb!cuda! to \verb!cu!.
+
+\item CUDA Libraries (CUBLAS, CUFFT, cuDPP...) are implemented on top
+  of CUDA C runtime API and thus they must be used with programs using
+  runtime API. They are discussed in Chap.~\ref{chap:cublas},
+  Chap.~\ref{chap:cufft}...
+
+\item \verb!nvcc! is used to compile host codes that use CUDA C
+  runtime API, so application that link to this code must use CUDA C
+  runtime API as well.
+
+\item Emulation code only work with CUDA C runtime APIs.
+  \textcolor{red}{Emulation support is removed in CUDA 3.1}
+
+\item There is no noticeable between the APIs, only the difference in
+  how your kernel is represented on GPU and how it uses memory.
+\end{enumerate}
+
+{\bf NOTE}: CUDA driver APIs starts with \verb!cu!, yet CUDA runtime API starts
+with \verb!cuda!. An important concept in CUDA driver API is {\bf CUDA context}
+(Sect.\ref{sec:cuda-context}). 
+
+
+\section{CUDA Driver API}
+\label{sec:driver-api}
+
+Compared to runtime APIs, CUDA driver APIs require more code, and is
+harder to program, as well to debug; yet offers a higher level of
+control and is language-independent (i.e. PTX) as it only deals with
+\verb!cubin! objects.
+\begin{enumerate}
+\item Advantages:
+  \begin{enumerate}
+  \item You don't need CUDA C runtime libraries
+  \item 
+  \item There is no C extension in the host code, e.g. no chevron
+    syntax, so the host code can be compiled with compilers other than
+    \verb!nvcc!. In addition, \textcolor{red}{you can compile your CUDA code
+    into the regular executable}, not the \verb!cubin! object; thus allowing
+    your program to run without installing CUDA driver. 
+    \item 
+  \item More detail information can be queried or more control through
+    the driver API, than via the runtime API. Example: control
+    multiple GPU (Sect.~\ref{chap:multiple_GPU}), context management
+    (Sec.~\ref{sec:cuda-context}), support 16-bit floating-point
+    textures, access to MCL image processing library
+    (Sect.~\ref{sec:mcl-image-library}).    
+    
+    \item Have features missing in the driver API, that is context
+    mangagement, e.g. migrating a context from one host thread to another. 
+    \item Support 16-bit floating-point textures.
+    \item Access to MCL image processing library
+    (Sect.\ref{sec:mcl-image-library}).
+  \end{enumerate}
+
+\item Disadvantages: 
+  \begin{enumerate}
+  \item Verbose code: In particular, it's more difficult to configure
+    and launch a kernel using driver API, since the execution
+    configuration and kernel parameters must be specified with explicit
+    functions calls, instead of using the chevron syntax.
+  \item Greater Difficult in debugging
+  \end{enumerate}
+\end{enumerate}
+
+\textcolor{red}{Understanding driver APIs will help you build a bold
+  knowledge of GPU computing; yet it's more difficult to program with
+  driver APIs}.
+In Driver APIs, most objects (residing on device memory) are
+referenced by opaque handles, as given in the second column of Table
+\ref{tab:CU_handles}. All CUDA driver APIs are implemented in the
+\verb!nvcuda! library.
+
+\begin{table}[hbt]
+  \begin{center}
+    \caption{Objects and its handle}
+    \begin{tabular}{ll} 
+      \hline
+      Object & Handle \\ 
+      \hline\hline
+      Context & CUcontext \\
+      Device & CUdevice \\
+      Module & CUmodule \\
+      Function & CUfunction \\
+      Heap memory & CUdeviceptr \\
+      CUDA array & CUarray \\
+      Texture reference & CUtexref
+    \end{tabular}
+  \end{center}
+  \label{tab:CU_handles}
+\end{table}
+
+\begin{framed}
+  Before using any driver API, the first API to call is \verb!cuInit!
+  which initialize the driver API. Currently, the argument must be zero,
+  and return an error message of type \verb!CUresult!.
+\begin{lstlisting}
+CUresult re = cuInit(0)
+\end{lstlisting}
+  If successful, the return value is \verb!CUDA_SUCCESS!.
+\end{framed}
+
+
+\section{CUDA context}
+\label{sec:cuda-context}
+
+A {\bf CUDA context} is analogous to CPU process, i.e. it is an instance from
+which any operations on GPU occur. Any resource residing on device memory (GPU
+ID itself, data on global memory, kernel running on GPU, address space (in terms
+of heap memory)...) must belong to a certain CUDA context. A CUDA context is
+implicitly created when a device is selected
+\begin{verbatim}
+gpuID =  0
+cudaGLSetGLDevice( gpuID )
+\end{verbatim}
+
+Once it's created, there's no way to change a CUDA context in CUDA 3.2 and
+earlier. As the result, \textcolor{red}{in CUDA 3.2 and earlier, any resource
+allocated from the device (e.g. memory, stream, events...)  are only valid
+within the context that they are created}. This restriction has been relaxed in
+CUDA 4.0 (Sect.\ref{sec:cuda4_nocopy_pinning}).
+  
+Using CUDA driver, a host thread may create as many context as it want. The
+context are kept in a stack; and only the top is the active (current) context.
+Any resource in GPU created from that point will belong to this current context.
+A context is created using \verb!cuCtxCreate()! in the host thread, and
+automatically associated with the host thread.
+\begin{verbatim}
+CUcontext ctx;
+cuCtxCreate(&ctx, 0, 0)
+\end{verbatim}
+If a valid context has not
+been created, most CUDA functions  return \verb!CUDA_ERROR_INVALID_CONTEXT!.
+
+The lifetime of a CUcontext object is managed by reference counting mechanism,
+initially set to 0. This reference count is incremented/decreased via CUDA
+driver API calls to cuCtxAttach() and cuCtxDetach(). However, we cannot do this with
+CUDA runtime API. Instead, the reference count is decreased when
+cudaThreadExit() is called. However, it cannot change the reference count a
+CUcontext if it's created by (1) CUDA driver API, (2) a different instance
+of CUDA runtime API.
+
+After finish using the current context, it must
+be released (pop from the stack) via \verb!cuCtxPopCurrent(ctx)! or
+\verb!cuCtxAttach(&ctx)! (the latter one also return the ``new'' current
+context).
+
+
+{\bf Example}: Create some memory on CPU, copy to GPU, call a kernel
+to process, and copy back the result, e.g. matrix addition
+\begin{lstlisting}
+///Data declaration
+CUdevice hDevice;
+CUcontext hContext;
+CUmodule hModule;
+CUfunction hFunction;
+
+///create CUDA device & context
+cuInit(0);
+cuDeviceGet(&hContext, 0); //first GPU device has ID = 0
+cuCtxtCreate(&hContext, 0, hDevice);
+
+/// prepare the kernel to call
+cuModuleLoad(&hModule, "vectorAdd.cubin");
+cuModuleGetFunction(&hFunction, hModule, "vectorAdd");
+
+/// allocate & initialize CPU memory
+float * pA = new float[cnDimension];
+randomInit(pA, cnDimension);
+...
+
+/// allocate data on device
+CUdeviceptr pDeviceMemA, pDeviceMemB, pDeviceMemC;
+cuMemAlloc(&pDeviceMemA, cnDimension * sizeof(float));
+...
+
+// copy data from CPU to GPU
+cuMemcpyHtoD(pDeviceMemA, pA, cnDimension * sizeof(float));
+...
+// set up 
+cuFuncSetBlockShape(cuFunction, cnBlockSize, 1, 1);
+..... many other things (read CUDA Best practice)
+
+//execute kernel
+cuLaunchGrid(cuFunction, cnBlocks, 1);
+
+//copy the result back
+cuMemcpyDtoH((void*) pC, pDeviceMemC, cnDimension * sizeof(float));
+
+//free memory
+delete[] pA;
+delete[] pB;
+
+cuMemFree(pDeviceMemA);
+cuMemFree(pDeviceMemB);
+\end{lstlisting}
+Two \verb!CUdeviceptr!  objects, even though has the same value,
+at different context, will point to different memory locations.
+
+CUDA runtime APIs operate on CUDA driver API. So, to make it simpler for
+programmers, it hides the process of CUcontext creation. With CUDA runtime APIs,
+a context is implicitly created for each host thread (CPU thread). Indeed, CUDA
+runtime maintains a list of modules to load and add to the list when a new .DLL
+or .so is loaded. The very first thing is that device must be selected. You can
+select the device using \verb!cudaSetDevice()!; otherwise a default one (GPU ID
+0) is selected. Then, when a CUDA runtime API that change the device's state,
+e.g. cudaMemcpy(), is called, it check if CUDA has been initialized. If not, it
+will automatically create the CUDA context and assign to whatever device being
+selected. At the time the CUContext is implicitly created, the flags pass to the
+CUDA driver API to do that job is the parameters specified by previous CUDA
+runtime API calls: cudaSetDevice, cudaSetValidDevices, cudaSetDeviceFlags,
+cudaGLSetGLDevice, cudaD3D9SetDirect3DDevice, cudaD3D10SetDirect3DDevice, and
+cudaD3D11SetDirect3DDevice. These functions will fail if a CUcontext is created
+already. In other words, these functions must be called in the beginning. 
+
+
+
+
+
+
+
+
+Everything defined within the context will be freed (automatically
+by the system) after the context exit.
+\begin{enumerate}
+  \item CUDA 3.2 and earlier: \textcolor{red}{In runtime API, the context cannot
+  be passed from one host thread to another. The resources in one context is
+  in accessible from other CPU threads. Yet, this can be done in driver API.}
+  If you use driver APIs, you have the power to migrate a context from one host thread to another. However, we need to create context explicitly when using driver API and by doing this we can get control to the
+handle of the context.
+   
+   \item CUDA 4.0: the restriction has been relaxed
+   (Sect.\ref{sec:cuda4_nocopy_pinning}).
+\end{enumerate}
+
+
+
+\section{MCL image library}
+\label{sec:mcl-image-library}
+
+
+\section{Samples runtime API vs. driver API code}
+\label{sec:sample_code}
+
+
+A typical code pattern in CUDA runtime API is 
+\begin{enumerate}
+  \item choose device: cudaSetDevice()
+  \item allocate data on host:
+  \item allocate data on device: cudaMalloc()
+  \item copy data to device: cudaMemcpy()
+  \item call kernel (which include kernel configuration information via chevron
+  syntax)
+  \begin{lstlisting}
+  dim3 block(16, 16);
+dim3 grid(width/block.x, height/block.y);
+kernel<<<block,grid>>>(parameters);
+  \end{lstlisting}
+  \item copy data back: cudaMemcpy()
+  \item free memory on host:
+  \item free memory on device:  cudaFree()
+\end{enumerate}
+e.g.:
+\begin{lstlisting}
+
+const unsigned int cnBlockSize = 512;
+const unsigned int cnBlocks    = 3;
+const unsigned int cnDimension = cnBlocks * cnBlockSize;
+// create CUDA device & context
+cudaSetDevice( 0 ); // pick first device
+// allocate host vectors
+float * pA = new float[cnDimension];
+float * pB = new float[cnDimension];
+float * pC = new float[cnDimension];
+// initialize host memory
+randomInit(pA, cnDimension);
+randomInit(pB, cnDimension);
+// allocate device memory
+float *pDeviceMemA, *pDeviceMemB, *pDeviceMemC;
+cudaMalloc(&pDeviceMemA, cnDimension * sizeof(float));
+cudaMalloc(&pDeviceMemB, cnDimension * sizeof(float));
+cudaMalloc(&pDeviceMemC, cnDimension * sizeof(float));
+// copy host vectors to device
+cudaMemcpy(pDeviceMemA, pA, cnDimension * sizeof(float), 
+    cudaMemcpyHostToDevice);
+cudaMemcpy(pDeviceMemB, pB, cnDimension * sizeof(float),
+    cudaMemcpyHostToDevice);
+vectorAdd<<<cnBlocks, cnBlockSize>>> (pDeviceMemA, pDeviceMemB,
+                                     pDeviceMemC);
+// copy result from device to host
+cudaMemcpy ((void *) pC, pDeviceMemC, cnDimension * sizeof(float),
+cudaMemcpyDeviceToHost);
+
+delete[] pA
+delete[] pB;
+delete[] pC;
+cudaFree(pDeviceMemA);
+cudaFree(pDeviceMemB);
+cudaFree(pDeviceMemC);
+\end{lstlisting}
+
+A typical code pattern in CUDA driver API require more work
+\begin{enumerate}
+  \item create CUDA device and context with: cuInit(); cuDeviceGet();
+  cuCtxCreate(); cuModuleLoad(); cuModuleGetFunction();
+  \item allocate data on CPU
+  \item allocate data on GPU: cuMemAlloc(), pointer type is cuDevicePtr
+  \item copy data: cuMemcpyHtoD()
+  \item set up kernel configuration: cuFuncSetBlockShape()
+  \item call kernel:
+  \begin{lstlisting}
+  dim3 block(16, 16);
+dim3 grid(width/block.x, height/block.y);
+//set block shape
+cuFuncSetBlockShape(kernel, block.x, block.y, 1);
+
+// all parameters are passed via cuParamSet*
+// e.g. cuParamSeti, cuParamSetf, cuParamSetv
+//      cuParamSetSize, cuParamSetTexRef
+// kernel name + grid shape (2D)
+cuLaunchGrid(kernel, grid.x, grid.y);
+  \end{lstlisting}
+  
+  NOTE: To associate kernel launch with a CUDA stream, we use
+  \verb!cuLaunchGridAsync(...,stream)! instead. 
+  
+  NOTE: To use shared memory, we need to call cuFuncSetSharedSize()
+  \item copy data back: cuMemcpyDtoH()
+  \item free memory: cuMemFree()
+\end{enumerate}
+\begin{lstlisting}
+const unsigned int cnBlockSize = 512;
+const unsigned int cnBlocks    = 3;
+const unsigned int cnDimension = cnBlocks * cnBlockSize;
+CUdevice    hDevice;
+CUcontext   hContext;
+CUmodule    hModule;
+CUfunction  hFunction;
+    
+// create CUDA device & context
+cuInit(0);
+cuDeviceGet(&hContext, 0); // pick first device
+cuCtxCreate(&hContext, 0, hDevice));
+cuModuleLoad(&hModule, "vectorAdd.cubin");
+cuModuleGetFunction(&hFunction, hModule, "vectorAdd");
+// allocate host vectors
+float * pA = new float[cnDimension];
+float * pB = new float[cnDimension];
+float * pC = new float[cnDimension];
+// initialize host memory
+randomInit(pA, cnDimension);
+randomInit(pB, cnDimension);
+// allocate memory on the device 
+CUdeviceptr pDeviceMemA, pDeviceMemB, pDeviceMemC;
+cuMemAlloc(&pDeviceMemA, cnDimension * sizeof(float));
+cuMemAlloc(&pDeviceMemB, cnDimension * sizeof(float)); 
+cuMemAlloc(&pDeviceMemC, cnDimension * sizeof(float));
+// copy host vectors to device
+cuMemcpyHtoD(pDeviceMemA, pA, cnDimension * sizeof(float));
+cuMemcpyHtoD(pDeviceMemB, pB, cnDimension * sizeof(float));
+\end{lstlisting}
+
+%###
+\begin{lstlisting}
+// set up parameter values
+cuFuncSetBlockShape(cuFunction, cnBlockSize, 1, 1);
+
+// keep track the number of bytes needed by the kernel parameters
+// via the mack ALIGN_UP
+//NOTE: __alignof(type) return the alignment requires 
+//                      (typically the same as
+//                      sizeof() for basic type) in that type
+
+#define ALIGN_UP(offset, alignment) \ 
+    (offset) = ((offset) + (alignment) - 1) & ~((alignment) - 1)
+    
+int offset = 0;
+
+ALIGN_UP(offset, __alignof(pDeviceMemA));
+cuParamSetv(cuFunction, offset, &ptr, sizeof(pDeviceMemA));
+offset += sizeof(pDeviceMemA);
+
+ALIGN_UP(offset, __alignof(pDeviceMemB));
+cuParamSetv(cuFunction, offset, &ptr, sizeof(pDeviceMemB));
+offset += sizeof(pDeviceMemB);
+
+ALIGN_UP(offset, __alignof(pDeviceMemC));
+cuParamSetv(cuFunction, offset, &ptr, sizeof(pDeviceMemC));
+offset += sizeof(pDeviceMemC);
+cuParamSetSize(cuFunction, offset);
+    
+// execute kernel
+cuLaunchGrid(cuFunction, cnBlocks, 1);
+
+// copy the result from device back to host
+cuMemcpyDtoH((void *) pC, pDeviceMemC, 
+             cnDimension * sizeof(float));
+delete[] pA;
+delete[] pB;
+delete[] pC;
+cuMemFree(pDeviceMemA);
+cuMemFree(pDeviceMemB);
+cuMemFree(pDeviceMemC);
+\end{lstlisting}
+%###
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

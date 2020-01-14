@@ -1,0 +1,50 @@
+
+\chapter{Folders}
+\label{chap:folders}
+
+
+
+\section{Environment variables}
+\label{sec:envir-vari-1}
+
+You can read the value of an environment variable using
+\verb!GetEnv()! subroutine. 
+\begin{lstlisting}
+call GetEnv('ENV_VAR', STR)
+\end{lstlisting}
+put the content of the environment variable \verb!ENV_VAR! to the
+string STR.
+
+\section{Get current working directory}
+\label{sec:get-current-working}
+
+Use the GNU extension \verb!GetCWD()! function. 
+
+\begin{lstlisting}
+PROGRAM test_getcwd
+CHARACTER(len=255) :: cwd
+CALL getcwd(cwd)
+WRITE(*,*) TRIM(cwd)
+END PROGRAM         
+\end{lstlisting}
+
+\section{Change folder}
+\label{sec:change-folder}
+
+Use GNU extension, {\bf ChDIR}
+
+\begin{lstlisting}
+PROGRAM test_chdir
+  CHARACTER(len=255) :: path
+  CALL getcwd(path)
+  WRITE(*,*) TRIM(path)
+  CALL chdir("/tmp")
+  CALL getcwd(path)
+  WRITE(*,*) TRIM(path)
+END PROGRAM
+\end{lstlisting}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

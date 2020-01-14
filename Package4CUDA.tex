@@ -1,0 +1,381 @@
+%%
+%% Module.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Wed Jul  8 14:05:25 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+\lstset{language={[90]Fortran}, numbers=left, numberstyle=\tiny,
+  stepnumber = 5, numbersep=5pt, keywordstyle=\color{blue}}
+
+% \chapter{Packages for CUDA}
+% \label{chap:packages-cuda}
+
+\chapter{Commercial Packages for CUDA}
+\label{chap:comm-pack-cuda}
+
+
+\section{CUBLAS}
+\label{sec:cublas}
+
+CUBLAS is the implementation in C of the widely used BLAS package to
+use with CUDA technology, \verb!libcublas.so!. For emulation purpose,
+you are recommended to use \verb!libcublasemu.so! (no longer support
+in CUDA 3.1).  Sec.~\ref{sec:cublas-1} will describe in details this
+package in C.  Another source if the manual CUDA ``CUBLAS Library
+2.3.pdf''.
+
+Since Fortran 2003, we can call directly C CUBLAS using the intrinsic
+module \verb!iso_c_binding!. For FORTRAN77 or Fortran 95, two versions
+of wrapper functions, thunking and non-thunking, had been implemented
+to call C CUBLAS functions. Such interfaces can be accessed via
+\verb!fortran.c!  file.
+\begin{verbatim}
+/usr/local/cuda/src/fortran.c
+\end{verbatim}
+
+{\bf NOTE}: slightly difference from CUBLAS C version, the naming
+convention is \verb!cublas_! + name of BLAS function.
+
+With two different types of wrappers, there are two corresponding ways
+to use: (1) THUNKING (CUBLAS take care of memory
+allocation/deallocation) and (2) NON-THUNKING.
+\begin{enumerate}
+\item THUNKING: the wrappers allocate memory in GPU, copy data to
+  device memory, perform the operation, and then copy back to the host
+  memory, as well as deallocate the memory in GPU.
+
+\item NON-THUNKING: programmers are more flexible to manage the
+  allocation and deallocation memory on GPU (using \verb!cublas_ALLOC!
+  and \verb!cubals_FREE!), and copy data to GPU and from GPU:
+  \begin{itemize}
+  \item for vector:\verb!cublas_SET_VECTOR!, \verb!cublas_GET_VECTOR!
+  \item for matrix: \verb!cublas_SET_MATRIX!, and
+    \verb!cublas_GET_MATRIX!
+  \end{itemize}
+\end{enumerate}
+
+{\bf NOTE}: As sometime you want to result to reside on the GPU for
+other operations, copy back and forth cause a large overhead, thus
+THUNKING  is only for testing purpose.
+
+{\bf NOTE}: No matter which version of wrappers we use, they all must
+be between the initialization \verb!cublas_nit! and closing
+\verb!cublas_shutdown!.
+
+\subsection{THUNKING}
+\label{sec:thunking}
+
+You first copy the file \verb!fortran.c! to your project folder. This
+C file use macro to separate the interfaces for THUNKING
+vs. NON-THUNKING mode.  Thus, to build an object file with interfaces
+for THUNKING mode, we compile the file with the option
+\verb!-DCUBLAS_USE_THUNKING!.
+
+\begin{lstlisting}
+gcc -O3 -DCUBLAS_USE_THUNKING 
+       -L/usr/local/cuda/include -c fortran.c
+\end{lstlisting}
+The resulting \verb!fortran.o!  then can be added to your project.
+
+{\bf NOTICE}: When you compile your project
+\begin{itemize}
+\item Compile the code with BLAS
+\begin{verbatim}
+g95 -O3 code.f90 -L/usr/local/lib64 -lblas
+\end{verbatim}
+
+\item If you run on x86-64 system, you need to use the 64-bit library
+  \verb!/usr/local/cuda/lib64! instead.
+
+\item If you use \verb!g77! or \verb!gfortran!, you need to add the
+  option
+\begin{verbatim}
+-fno-second-underscore
+\end{verbatim}
+as well (we don't do this with PGI Fortran).
+\begin{verbatim}
+gfortran -fno-second-underscore source.f fortran.o
+           -L/usr/local/cuda/lib64 -lcublas
+
+pgf95 source.f fortran.o -L/usr/local/cuda/lib64 -lcublas
+\end{verbatim}
+
+\item all CUBLAS being used must be declared as EXTERNAL. The reason
+  is that FORTRAN 77 has not supported module yet.
+\begin{lstlisting}
+EXTERNAL cublas_sgemm
+REAL, DIMENSION(m1, m1) :: A, B, C
+
+call cublas_SGEMM('n', 'n', m1, m1, m1, alpha, A, 
+          m1, B, m1, beta, C, m1)
+\end{lstlisting}
+
+\end{itemize}
+% . In NON-THUNKING, we dont have to do this, yet we need to
+% initialize with \verb!cublas_nit! and close with
+% \verb!cublas_shutdown!.
+
+{\bf TIPS}:
+\textcolor{red}{You can make your code more portable, by choosing when
+  to use host BLAS version or cuda BLAS version}
+using the macro \verb!CUBLAS!.
+\begin{lstlisting}
+! Define 3 single precision matrices A, B, C
+real , dimension(m1,m1):: A, B, C
+     :
+! Initialize
+     :
+#ifdef CUBLAS
+! Call SGEMM in CUBLAS library using THUNKING interface 
+! (library takes care of
+! memory allocation on device and data movement)
+  call cublas_SGEMM (.....)
+#else
+! Call SGEMM in host BLAS library
+  call SGEMM ('n','n',m1,m1,m1,alpha,A,m1,B,m1,beta,C,m1)
+#endif
+\end{lstlisting}
+If you use macro, the compiler needs to preprocess the source file to
+filter out the unused code. You need to (1) use uppercase extension
+(.F, .F95), or (2) explicitly specify the option \verb!-Mpreprocess!
+(PGI Fortran). 
+\begin{lstlisting}
+g95 -O3 -DCUBLAS code.f90 fortran.o 
+         -L/usr/local/cuda/lib64 -lcublas
+
+pgf95 -O3 code.f90 fortran.o -Mpreprocess 
+      -L/usr/local/cuda/lib64 -lcublas  
+\end{lstlisting}
+
+
+CONCLUSION: By using NON-THUNKING CUBLAS, the existing Fortran code
+using BLAS will has a minimum modification as NON-THUNKING CUBLAS will
+take care of memory allocations and transfer processing between CPU
+and GPU.  However, much overhead is taken because every function calls
+invoke these processing. So, it's better to use NON-THUNKING approach.
+
+
+\subsection{NON-THUNKING}
+\label{sec:non-thunking}
+
+Similar to using THUNKING, you first copy the file \verb!fortran.c! to
+your project folder; then compile the file (without any option) to
+create the object file containing the interfaces for NON-THUNKING
+mode.
+\begin{verbatim}
+gcc -I/usr/local/cuda/include -c fortran.c
+\end{verbatim}
+
+Using macro to separate the code between BLAS and CUBLAS, you can
+compile the source code like this
+\begin{lstlisting}
+pgf95 source.f95 -O3 -Mpreprocess -L/usr/local/lib64 -lcublas
+
+pgf95 code.F95 -O3 -L/usr/local/cuda/lib64 -lcublas
+\end{lstlisting}
+Notice the difference between using .f95 (.f, .f90) and .F95 (.F, .F90).
+
+With NON-THUNKING, you have to take care of allocating memory on the
+device memory and free them after using.  All calls to CUBLAS
+functions need to be within \verb!cublas_init! and
+\verb!cublas_shutdown!. Such functions will map device pointers to
+32-bit integers on Fortran side, regardless of whether the host is
+32-bit or 64-bit. In other words, pointer in Fortran we use it as an
+integer variable.
+
+
+\subsection{Sample code}
+\label{sec:sample-code-1}
+
+Suppose that you want to modify a matrix by multiplying to one scalar
+for values at row 2nd, and one scalar for values at column 3rd,
+starting at the value a(2,3).
+\begin{verbatim}
+     1.     2.     3.     4.     5. 
+     2.     4.     6.     8.    10. 
+     3.     6.     9.    12.    15. 
+     4.     8.    12.    16.    20. 
+     5.    10.    15.    20.    25. 
+     6.    12.    18.    24.    30. 
+ 
+     1.     2.     3.     4.     5. 
+     2.     4.  1152.   128.   160. 
+     3.     6.   108.    12.    15. 
+     4.     8.   144.    16.    20. 
+     5.    10.   180.    20.    25. 
+     6.    12.   216.    24.    30. 
+\end{verbatim}
+
+{\bf Host BLAS code}:
+\begin{lstlisting}
+program matrixmod
+implicit none
+integer:: M, N
+parameter (M=6, N=5)
+real*4 :: a(M,N)  ! real matrix in host
+integer :: i, j
+
+do j = 1, N   ! generate data
+  do i = 1, M
+    a(i,j) = i*j
+  enddo
+enddo
+
+call modify(a, M, N, 2, 3, 16.0, 12.0) 
+
+do j = 1, N  ! output
+  do i = 1, M
+    write(*, "(F7.0$)") a(i,j)
+  enddo
+  write (*,*) ""
+enddo
+stop
+end program
+
+!!!!!!!!!!!!!!!!
+subroutine modify (m, ldm, n, p, q, alpha, beta)
+implicit none
+integer :: ldm, n, p, q
+real*4 :: m(ldm, *), alpha, beta
+external sscal
+
+! NOTE: column-major
+call sscal (n-p+1, alpha, m(p,q), ldm)
+call sscal (ldm-p+1, beta, m(p,q), 1)
+return
+end
+
+! SSCAL (N, SF, SX, INCR)
+! N    = number of elements
+! SF   = scale factor
+! SX   = vector of N elements
+! INCR = storage spacing between elements of SX
+\end{lstlisting}
+
+
+{\bf GPU CUBLAS code}:
+\begin{lstlisting}
+program matrixmod
+implicit none
+parameter (M=6, N=5, sizeof_real=4)
+integer M, N, sizeof_real, devPtrA
+
+real*4 A(M,N)   ! matrix
+external cublas_init, cublas_set_matrix, cublas_get_matrix
+external cublas_shutdown, cublas_alloc
+
+integer cublas_alloc, cublas_set_matrix, cublas_get_matrix
+
+! generate data for A(M,N) - skipped
+
+call cublas_init
+stat = cublas_alloc(M*N, sizeof_real, devPtrA)
+  ! all in bytes
+  ! devPtrA hold the memory address of the GPU memory
+if (stat .ne. 0) then 
+   write (*,*) "device memory allocation failed"
+   call cublas_shutdown
+   stop
+endif
+stat = cublas_set_matrix(M, N, sizeof_real, A, M, devPtrA, M)
+if (stat .ne. 0) then
+   call cublas_free(devPtrA)
+   write (*,*) "data download failed"
+   call cublas_shutdown
+   stop
+endif
+
+  ! perform operation given devPtrA as argument
+call modify(devPtrA, M, N, 2, 3, 16.0, 12.0)
+! get data back
+stat = cublas_get_matrix(M, N, sizeof_real, devPtrA, M, A, M)
+if (stat .ne. 0) then
+   call cublas_free(devPtrA)
+   write (*,*) "data upload failed"
+   call cublas_shutdown
+   stop
+endif
+call cublas_free(devPtrA)
+call cublas_shutdown
+
+!work with CPU data A(M,N)
+\end{lstlisting}
+
+Now, we notice how the function \verb!modify! is written.
+\begin{lstlisting}
+! i, j: index
+! ld  : number of rows
+! used to obtain index of an element stored linearly in memory
+! from a Fortran matrix (indices starting from 1)
+#define IDX2F(i, j, ld) ((((j)-1)*(ld))+((i)-1))
+
+subroutine modify(devPtrM, ldm, n, p, q, alpha, beta)
+implicit none
+integer sizeof_real
+parameter (sizeof_real=4)
+integer :: ldm, n, p, q, devPtrM
+real :: alpha, beta
+
+call cublas_sscal(n-p+1, alpha, \
+     devPtrM+IDX2F(p, q, ldm)*sizeof_real, ldm)
+call cublas_sscal(ldm-q+1, beta, \
+     devPtrM+IDX2F(p, q, ldm) * sizeof_real, 1)
+return
+end subroutine
+
+! devPtrM is a pointer, and data is stored in a linear manner, 
+! thus we access elements using increment 
+! devPtrM + (elements) * (size of each element)
+\end{lstlisting}
+
+ 
+% \begin{lstlisting}
+% #define IDX2F(i, j, ld) ((((j)-1)*(ld))+((i)-1))
+
+% parameter (sizeof_real = 4, m1 = 10)
+% REAL, DIMENSION(m1, m1) :: A, B, C
+
+% integer :: devPtrA, devPtrB, devPtrC
+% integer :: m1, size_of_real
+%    ! init
+% call cublas_init
+%    ! allocate matrices on GPU
+% cublasAlloc(m1*m1, size_of_real, devPtrA)
+% cublasAlloc(m1*m1, size_of_real, devPtrB)
+% cublasAlloc(m1*m1, size_of_real, devPtrC)
+%    ! copy date from CPU to GPU
+% cublasSetMatrix(m1, m1, size_of_real, A, m1, devPtrA, m1)
+% cublasSetMatrix(m1, m1, size_of_real, B, m1, devPtrB, m1)
+% cublasSetMatrix(m1, m1, size_of_real, C, m1, devPtrC, m1)
+
+%    ! call SGEMM in CUBLAS (using NON-THUNKING interface)
+% call cublasSGEMM('n', 'n', m1, m1, m1, alpha, A, 
+%          m1, B, m1, beta, C, m1)
+
+%    ! copy data back from GPU to CPU
+% cublasGetMatrix((m1, m1, size_of_real, devPtrC, m1, C, m1)
+
+%    ! free memory on device
+% cublasFree(devPtrA)
+
+%    ! shutdown
+% call cublas_shutdown
+% \end{lstlisting}
+
+\section{Commercial packages}
+\label{sec:commercial-packages-1}
+
+\subsection{IMSL}
+\label{sec:imsl-1}
+
+\subsection{NAG}
+\label{sec:nag-1}
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

@@ -1,0 +1,189 @@
+
+\chapter{Thrust}
+\label{chap:thrust}
+
+
+\section{Introduction}
+\label{sec:introduction-3}
+
+
+Thrust is a CUDA-capable library written in C, yet with C++ template
+interface. % Thus, it's better to use with CUDA from version 3.0.
+Latest Thrust 1.3 support CUDA 3.2. 
+You need to download the file, unzip and copy the full folder named
+\verb!thrust! to the folder /usr/local/cuda/include.
+
+Thrust library provides two vector containers 
+\begin{itemize}
+\item \verb!host_vector!: store objects on the host memory
+\item \verb!device_vector!: store objects on the device memory (by reference)
+\end{itemize}
+Just like \verb!std:vector! in C++ STL, both behave like generic
+containers, i.e. store any data type and can be resized dynamically.
+Thrust can do several things, and one of them is sorting.
+
+For primitive data types (char, int, float, double, long), with the
+default comparison method \verb!thrust::less<T>! is used (sort
+ascending), then Thrust use radix-sort.
+
+\begin{lstlisting}
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
+int main (void) {
+  thrust::host_vector<int> H(5); // vector of 5 elements
+
+  H.resize(2) ;; 
+
+  thrust::device_vector<int> D = H; //copy host to device vector
+                      // D has 2 elements
+  // = operator can be used to copy a host data to device data
+  // elements can be accesssed uing [] notation (this is, however, not 
+  // + recommended as it call to cudaMemcpy()
+  D[0] = 99;
+  D[1] = 23;
+
+  thrust::host_vector<int> D(10,2) ; //initialize all 10 elements to 2
+
+  //set the first 7  elements to 9
+  thrust::fill(D.begin(), D.begin() + 7, 9) ; 
+
+  //set the elements of H to 0,1,2,3
+  thrust::sequence(H.begin(), H.end());
+
+  //copy data in H to the beginning of D
+  thrust::copy(H.begin(), H.end(), D.begin());
+
+  return 0; // no need to free 
+}
+\end{lstlisting}
+
+All methods use {\bf static dispatching}, thus it determines the
+appropriate operations at compile-time. It implies that there is no
+runtime overhead to the dispatch process.
+
+\subsection{Thrust 1.3}
+\label{sec:thrust-1.3}
+
+Thrust 1.3 has new/improved features
+\begin{itemize}
+\item radix sorting (fixed-length keys): keys can be of any C/C++
+  intrinsic types (signed char, float, unsigned long long...) with 1B
+  integer keys/sec in C2050, and 750 M integer keys/sec. With
+  floating-point keys, it has 0.5-1.5\%
+  overhead\footnote{\url{http://code.google.com/p/back40computing/wiki/RadixSorting}}
+  . 
+\item 
+\end{itemize}
+
+NOTE: Thrust 1.3 supports up to CUDA 3.2 and remove the support for
+CUDA 2.3. 
+
+\subsection{Thrust 1.2.1}
+\label{sec:thrust-1.2.1}
+
+Thrust 1.2.1 support CUDA 3.1. 
+
+\section{Raw pointers with Thrust}
+
+You can pass raw pointers to Thrust functions and it dispatch the host
+path of the algorithm by default. If you want to specify the pointer
+as pionters to device memory, you need to wrap it with
+\verb!thrust::device_ptr! before calling to the function.
+
+Thus, you don't use \verb!host_vector! nor \verb!device_vector! to
+define a variable, instead you use \verb!device_ptr!
+\begin{lstlisting}
+size_t N = 10;
+
+int *raw_ptr; 
+cudaMalloc((void **) &raw_ptr, N *sizeof(int));
+
+thrust::device_ptr<int> dev_ptr(raw_ptr);
+
+thrust::fill(dev_ptr, dew_ptr + N, (int) 0);
+\end{lstlisting}
+
+To extract a raw pointer from a \verb!device_ptr! you use
+\verb!raw_pointer_cast! function
+\begin{lstlisting}
+size_t N = 10;
+
+thrust::device_ptr<int> dev_ptr = thrust::device_malloc<int> N;
+
+//extract raw pointer
+int *raw_ptr  = thrust::raw_pointer_cast(dev_ptr);
+
+\end{lstlisting}
+
+\section{Sort}
+
+\subsection{CPU}
+
+Thrust provides two analogs of STL's \verb!std::sort! and
+\verb!std::stable_sort!, with ascending by default (i.e. using $<$ operator).
+
+\begin{enumerate}
+\item  \verb!thrust::sort!
+\item \verb!thrut::stable_sort!
+\item \verb!thrust:sort_by_key!
+\item \verb!thrust:stable_short_by_key!
+\end{enumerate}
+
+\begin{lstlisting}
+#include <thrust/sort.h>
+const int N=5;
+int keys[N] = {1,4,2,7,5};
+char values[N] = {'a', 'b', 'c', 'd', 'e'};
+
+thrust::short_by_key(keys, keys+N, values);
+
+int A[N] = {1,4,3,8,5};
+thrust::stable_sort(A, A+N, thrust::greater<int>());
+
+thrust::sort(A, A+N, thrust::greater<int>());
+\end{lstlisting}
+
+You are allowed to provide a comparison function as the third argument
+to \verb!thrust::sort()! or \verb!thrust::stable_sort()! just like
+STL's std::sort function. 
+
+\subsection{GPU}
+
+On CUDA 4.0, parallel sorting improve 5x to 100x faster.
+
+\section{Thrust on CUDA 4.0}
+\label{sec:thrust_cuda40}
+
+With CUDA 4.0, Thrust introduced new data structure (similar to that of C++
+STL)
+\begin{lstlisting}
+thrust:device_vector
+thrust:host_vector
+thrust:device_ptr  
+...
+\end{lstlisting}
+and new algorithms
+\begin{lstlisting}
+thrust:sort
+thrust:reduce
+thrust:exclusive_scan  
+\end{lstlisting}
+
+Thrust can also choose either using GPU or multi-core CPU whichever is tha
+fastest code-path at compile time. 
+
+
+
+References:
+\begin{itemize}
+\item \url{http://code.google.com/p/thrust/wiki/Tutorial}
+\item \url{http://code/google/com/p/thrust/}
+\end{itemize}
+
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

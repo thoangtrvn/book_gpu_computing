@@ -1,0 +1,63 @@
+
+\chapter{Troubleshooting}
+\label{chap:troubleshooting}
+
+
+This chapter describe the  meaning and solution of common 
+\begin{enumerate}
+\item \verb!ConfigureCall FAILED:9!: it can be
+  \begin{enumerate}
+  \item The deice has not been initialized yet (call cudaSetDevice())
+  \item The chevron syntax is not properly set, check the value of the
+    block size and grid size
+  \end{enumerate}
+
+\item
+  \verb!0: DEV_MKDESC: allocate FAILED:4(unspecified launch failure)!:
+  there is an unknown error in allocation, e.g. run out of memory or allocation
+  size is too large or address is out of bound. The best way to know what
+  exactly the problem is, we use \verb!cuda-memcheck!. 
+  
+  \item If we look at the driver type \verb!driver_types.h!, it states that
+  ``this indicates that an uncorrectable ECC error was detected during
+  execution''. It means cudaErrorECCUncorrectable denotes a double-bit error,
+  and most likely it indicates a bad GPU board. 
+  \begin{verbatim}
+  copyout Memcpy FAILED: 39<uncorrectable>
+  \end{verbatim}
+  
+\end{enumerate}
+
+\section{{\bf -lGL} missing}
+\label{sec:lGL}
+
+When you compile the SDK and get the error
+\begin{verbatim}
+/usr/bin/ld:cannot find -lGL
+\end{verbatim}
+then you need to make sure /usr/lib/libGL.so and /usr/lib/libGL.so.1 both link
+to the same and correct files, e.g. 
+\begin{verbatim}
+root@cea2:C\ $ls -l /usr/lib/libGL.so
+lrwxrwxrwx 1 root root 13 2011-08-10 13:15 /usr/lib/libGL.so -> mesa/libGL.so
+root@cea2:C\ $ls -l /usr/lib/libGL.so.1
+lrwxrwxrwx 1 root root 15 2011-08-10 13:11 /usr/lib/libGL.so.1 -> libGL.so.280.13
+\end{verbatim}
+then you can fix
+\begin{verbatim}
+rm /usr/lib/libGL.so
+cd /usr/lib
+ln -s libGL.so.280.13 libGL.so
+\end{verbatim}
+
+If you get the error
+\begin{verbatim}
+/usr/bin/ld: cannot find -lXmu
+\end{verbatim}
+then you install package \verb!libxmu-dev!. 
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

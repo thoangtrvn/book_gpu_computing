@@ -1,0 +1,384 @@
+\chapter{OpenACC}
+\label{chap:openACC}
+
+{\bf Why OpenACC?}: Existing code, with some part of the code can be deployed to
+GPU. Such codes are typically loops.
+
+{\bf What is OpenACC?}: open standard defining a collection of compiler
+directives that specify loops and regions of code in standard C, C++, and
+Fortran to be offloaded from a host CPU to an attached parallel accelerator,
+such as CUDA.
+OpenACC is based on OpenMP directives. OpenACC was developed by The Portland
+Group (PGI), Cray, CAPS and NVIDIA.
+ OpenMP (Sect.\ref{chap:openmp}) use
+\verb!#pragma! directives to run on multi cores CPU. 
+
+Based on OpenMP, OpenACC targets to non-expert programmers in parallel
+computing. OpenACC can also be targeted to non-Nvidia devices. 
+
+\begin{verbatim}
+  #pragma omp parallel for reduction (+:pi)
+      for (...)
+      {
+        pi += 4.0/(1.0_t*t)
+      }
+\end{verbatim}
+then to
+\begin{verbatim}
+  #pragma acc kernels
+   for (...) 
+   {
+   
+   }
+\end{verbatim}
+\verb!#pragma! is used in OpenACC C language; and \verb.!$acc. is used in
+OpenACC Fortran.
+
+PGI Fortran starts with 12.3 to support OpenACC partially. 
+\begin{verbatim}
+!$acc kernels
+
+   DO k = 1, n1
+     Do i = 1, n2
+     
+!$acc end kernels
+\end{verbatim}
+
+OpenACC vs. Accelerator? 
+\begin{enumerate}
+  \item Instead of using \verb!region!, OpenACC use \verb!kernel! as directive
+  name
+  \begin{verbatim}
+  !$acc directive [clause ...]
+     structured block
+  !$acc end directive 
+  \end{verbatim}
+  and 
+  \begin{verbatim}
+  #pragma directive [clause ...]
+     {structured block}
+  #pragma end directive
+  \end{verbatim}
+  with \verb!clauses!
+  \begin{verbatim}
+  if (cond.)
+  async (expression)
+  \end{verbatim}
+\end{enumerate}
+
+Without explicit data transfer between CPU-GPU. \textcolor{red}{Question:Then
+how to tell GPU to keep data without moving it back???} We need to decouple data
+movement and compute off-load. Example: to avoid recopy after every iteration in
+the loop, we can ask it to put, say A and Anew, by combining the two loops into
+a single kernel; or a better data managment: \verb!data! clause with a bunch of
+different directives.
+\begin{verbatim}
+copyin()
+copyout()
+...
+\end{verbatim}
+E.g.:
+\begin{verbatim}
+!$acc data copyin(a(1:size)), copyout(b(s/4:3*s/4))
+
+In C (start index is zero, and use square bracket
+$pragma acc data copyin(a[0:size]), copyout(b(s/4:3*s/4))
+\end{verbatim}
+
+
+Important keywords:
+\begin{enumerate}
+  \item \verb!restrict!: this is an important keyword in C language with pointer
+  which adding caching performance by avoiding the effect of {\it pointer
+  aliasing}. 
+  \verb!fp_kind! behind a floating value to tell its byte length
+\end{enumerate}
+
+
+Compile
+\begin{verbatim}
+pgcc -acc [-Minfo=accel] -o binaryfile code.c
+
+pgf90 -acc [-Minfo=accel] -o binaryfile code.f90
+\end{verbatim}
+
+Example: Jacobi iteration
+\begin{verbatim}
+while (err > tol && iter < iter_max) {
+#pragma omp parallel for shared(m, n, Anew, A) reduction(max:err)
+  for ()
+    for ()
+    
+    }
+  }
+  iter++;
+ }
+\end{verbatim}
+
+\begin{verbatim}
+while (err > tol && iter < iter_max) {
+#pragma acc kernels
+for (..)
+   for(...)
+       A[j][i] = Anew[j][i];
+   }
+}
+iter++;
+}
+\end{verbatim}
+In Fortran, we also have the new \verb!_fb_kind! concept.
+
+\textcolor{red}{Question: under what situation, that using directives doesn't
+work, and we need explicit kernel implementation???}
+\begin{enumerate}
+  \item Nested for loops are best for parallelization
+  \item Large loop counts needed to offset GPU/memcpy overhead
+  \item \verb!PGI_ACC_TIME=1! is environment variable to learn where time is
+  being spent
+  \item Eliminate pointer arithmetic
+\end{enumerate}
+
+\textcolor{red}{QUESTION: How to tell OpenACC to do the compute only, not data
+transfer}??? - 
+
+
+Threads need to load/store blocks of memory; share results with each other or
+coorporate to produce a result (e.g. reduction); or synchronize with each other. 
+
+OpenACC execution model has 3 levels {\bf gang}, {\bf worker} and {\bf vector}.
+This works on architectures that is a collection of {\bf Processing Elements}
+(PEs). The device has one or more PEs per node. Each PE is multi-threaded.
+\begin{verbatim}
+gang == block; worker == warp; vector == threads of a warp
+we can omit "worker", i.e. gang == block, and vector == threads of a block
+\end{verbatim} 
+
+So, the execution is implementation-dependent (i.e. compilers). Also, user can
+explicitly specify how a given loop should map to gangs, workers, and/or
+vectors. E.g.: specify the number of gangs/workers/vectors which allows
+programmers to tune the code to fit a particular target architecture.
+
+\begin{verbatim}
+// here, the compiler automatically a suitable mapping
+/ to threads and blocks, e.g. 16 blocks, 256 threads each
+#pragma acc kernels loop
+ for (int i =0; i<n; ++i) y[i] += a*x[i];
+\end{verbatim}
+We want to explicity tell 100 thread blocks, and each with 128 threads, each
+thread executes one iteration of the loop.
+\begin{verbatim}
+#pragma acc kernels loop gang(100), vector(128)
+ for (int i =0; i<n; ++i) y[i] += a*x[i];
+\end{verbatim}
+
+If we want to compile a bunch of loops which should be run together we use
+\verb!acc parallel! and \verb!num_gangs()!, as well as \verb!vector_length()!.
+\begin{verbatim}
+#pragma acc parallel num_gangs(100), vector_length(128)
+{
+   #pragma acc loop gang
+   for (int i =0; i<n; ++i) y[i] += a*x[i];
+}
+\end{verbatim}
+Here, 100 thread blocks, each with apparently 1 thread, each thread redundantly
+executes the loop
+\begin{verbatim}
+#pragma acc parallel num_gangs(100)
+{
+   #pragma acc loop gang
+   for (int i =0; i<n; ++i) y[i] += a*x[i];
+}
+
+\end{verbatim}
+
+Here, 100 thread blocks, each with 128 threads, each thread does 2
+elements worth of work
+\begin{verbatim}
+n = 128000
+   #pragma acc loop gang(50), vector(128)
+   for (int i =0; i<n; ++i) y[i] += a*x[i];
+\end{verbatim}
+
+Thus, to do multi-dimensional blocks and grids, we do
+\begin{verbatim}
+#pragma acc kernels loop gang(100), vector(16)
+  for (...) {
+  #pragma acc loop gang(10), vector(32)
+  for (...) {
+  
+  }
+}
+\end{verbatim}
+NOTE: If we say \verb!gang!, it means \verb!gang(1)!. 
+
+Typically, on CUDA-capable GPUs, the number of threads in a block is a multiple
+of 32, at least. The values between 256 to 512 is usually a good choice. Overly
+large block can hinder the performance, e.g. by increasing the cost of any
+asynchronous/barrier among all threads in a block. For 2D blocks, we can try a
+few combinations like 32x8, 64x4, 32x16, 64x8, etc.
+
+Each thread can do multiple pieces of work to help amortize the cost of setup
+for simple kernels. {\bf Rule of thumb:} we at least want to have enough threads
+to fill the GPU several times over the number of cores (perhaps 10 or more),
+i.e. we need 100,000+ threads. 
+\begin{verbatim}
+#pragma acc loop gang, vector(8)
+
+#pragma acc loop gang(16), vector(32)  // 
+\end{verbatim}
+By tweaking the block sizes, how often to copy data in/out, we can significantly
+improve the performance.
+
+{\bf QUESTION: what architecture can be targeted for current OpenACC version}???
+- Nvidia GPU only. 
+
+We can test using PGI Accelerator Profiling or Nvidia Visual Profiler (which is
+different in interface between 4.0 and 4.1). Another option is Nvidia Nsight
+Profiler (target to Windows). 
+
+There's a directive to tell the compiler to keep an array in the cache memory.
+The compiler can also design with heuristics to do this for us.
+\begin{verbatim}
+#pragma acc cache
+\end{verbatim} 
+
+A second instance of the stencil kernel. 
+
+We need stride-1 in the parallel loop to maximize performance. C doesn't have a
+multi-dimensional array, which is an array of pointers to rows, indeed. How to
+pass a multi-dimensional array in C with OpenACC??? - It doesn't work so well. 
+
+If we want to reuse the data already on the GPU, we use \verb!present! clause.
+If it's not there, do the copy, the we use \verb!present_or_copy! or
+\verb!present_or_copyin! clause
+\begin{verbatim}
+#pragma acc kernels loop present(a(0:n-1))
+
+#pragma acc kernels loop present_or_copyin(a(0:n-1))
+
+#pragma acc kernels loop present_or_copy(a(0:n-1))
+
+\end{verbatim}
+
+\begin{verbatim}
+#pragma acc data copy(x[0:n]) ...
+{
+   for (timestep = 0; ...) {
+       ...compute on device ...
+       #pragma update host (x[0:n])
+       
+       MPI_SENDRECV( x, ...)
+       
+       #pragma update device (x[0:n])
+       ... adjust on device
+   }
+   
+}
+\end{verbatim}
+
+
+Asynchronous data transfer
+\begin{verbatim}
+#pragma acc kernels loop async
+for (i = 1;, i < n; ++i) 
+     y[i] += a*x[i];
+
+
+#pragma acc update device (x[0:n], y[0:n]) async
+
+#pragma acc update host (y[0:n]) async
+ ...
+ #pragma acc wait
+\end{verbatim}
+
+There's no concept of pinned memory in OpenACC. CRAY machines are huge, with
+large memory, so pinned memory is not important. With PGI, pinned memory is
+important as machines are smaller and less powerful. What if we communicate
+through libraries which user may pinned memory, but the library assumed it's
+unpinned; or vice versa. This needs more work with the OS to determined if the
+memory is pinned or not. 
+
+\begin{verbatim}
+!$acc kenerls loop present(a(:,js-1:je+1), b(:,js-1:js+1)) async if (usegpu)
+...
+\end{verbatim}
+and then
+\begin{verbatim}
+do iter=1,maxiters
+   call smoothier(..., .true., ...)
+   call smoothier, ..., .false.,...)
+   !$acc update host (a(:,js)) device (a(:,js+1)) async
+   !$acc wait
+   call smoothier(..., .true., ...)
+   call smoothier, ..., .false.,...)
+   !$acc update host   (b(:,js)) device (b(:,js+1)) async
+   !$acc wait
+\end{verbatim}
+But it's waste as the CPU wait while GPU do it work, we can rearrange the lines
+so both do their jobs (compute in one, and copy in another).
+
+
+OpenMP and OpenACC are actually not really friendly to each other. 
+
+
+How about multiple GPUs??? NO good answer to solve the problem of data
+management. PGI requires using MPI or OpenMP
+
+\begin{verbatim}
+#include <openacc.h>
+#include <omp.h>
+
+#pragma omp parallel num_threads(2) 
+{ 
+  int i = omp_...
+  
+}
+\end{verbatim}
+in MPI
+\begin{verbatim}
+#include <openacc.h>
+#include <mpi.h>
+
+int myrank;
+MPI_Comm_Rank(MPI_COMM_WORLD, &myrank);
+int numdev = acc_get_num_devices(acc_device_nvidia);
+int i = myrank % numdev;
+acc_set_device_num( i, acc_device_nvidia);
+\end{verbatim}
+
+It's really hard to reindex all the data when we move it. The strides are
+different, \ldots
+
+\section{cuSPARSE}
+
+cuSPARSE is $> 6$x than Intel MKL. 
+
+
+\section{cuRAND}
+
+The two widely used methods in CUDA 4.1 are \verb!MRG32k3a! and MTGP11213
+Mersenne Twister RNGs. They can support several output distributions (uniform,
+normal, Poisson, etc.). 
+
+\section{cuFFT}
+
+
+Example: 1D point-wise convolution using cuFFT
+\begin{enumerate}
+  \item Convolution transform signal and kernel with \verb!cufftExecC2C!.
+  
+  \item \verb!complexPointwiseMulAndScale!: multiply the coefficients together
+  and normalize the result
+  
+  \item Transform the signal back
+\end{enumerate}
+
+NOTE: PGI C compiler does not support \verb!structs! in OpenACC loops, so we
+need to cast \verb!Complex*! pointer to float* pointers and use interleaved
+indexing. 
+
+We can use \verb!deviceptr! data clause to pass pre-allocated device data to
+OpenACC region and loops. Use \verb!host_data! to get device address for
+pointers inside acc data clause. 
+
+\verb!mharris@nvidia.com!

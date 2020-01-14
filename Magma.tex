@@ -1,0 +1,34 @@
+\chapter{Magma}
+\label{chap:magma}
+
+\section{SYMV (symmetric matrix-vector multiplication)}
+
+Assumption: matrix is stored in column-major format
+
+We need to store half of the matrix to store the space ($N^2$ vs. $N^2/2$
+elements). However, we need to deal with coalesced memory access. 
+
+\subsection{Space overhead (S.O.)}
+
+$N_{TB}$ is blocking factor. |TB| is the number of thread-block. N is the size
+of the matrix. 
+\begin{verbatim}
+|TB| = [N/N_TB] !!!ceiling operator
+\end{verbatim}
+
+With $N_{TB}=32$, it get maximum performance. 
+\begin{verbatim}
+      nb=64
+   __________
+  |  shared   |        
+  | memory    |       N_TB=64
+  |__________|
+\end{verbatim}
+The matrix is splitted into square-block that fits into shared memory. 
+
+\subsection{Parallel SYMV on multiple GPUs}
+
+Every GPU has a copy of X, compute $y_i=\alpha A_i$ where $A_i$ is the local for
+GPU $i$-th matrix, reuses the single GPU kernels. 
+
+If the problem is memory bound, it doesn't scale well on multicore GPUs. 

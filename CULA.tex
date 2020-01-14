@@ -1,0 +1,41 @@
+
+\chapter{CULA}
+\label{chap:cula}
+
+
+\section{CULA}
+\label{sec:cula}
+
+CULA is the GPU-based version of LAPACK package. It shows a 3x to 10x
+speedup compared to Intel Math Kernel Library implemented for Intel
+Core i7 processor. Compared with LAPACK package implementation, it
+shows a 40x to 200x speed-up.
+
+
+There is no need for the user to manage GPU memory or know any
+specifics about GPU programming. Simply call a CULA function and the
+framework will do all the GPU management for you. The allocations,
+workspace creations, and memory transfers are all taken care of under
+the hood. 
+
+There are three different versions: CULA Basic, CULA Premium, and CULA
+Commercial. Even though CULA Basic is for free, all installers only
+provide pre-compiled libraries and the headers needed to develop a
+CULA application.
+
+All versions of CULA support single-precision complex
+data. Double-precision complex support is included in both CULA
+Premium and CULA Commercial. The CULA Basic Beta only supports
+single-precision real data. 
+
+CULA functions use column-major data.
+
+References:
+\begin{itemize}
+\item \url{http://www.culatools.com/faq}
+\end{itemize}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

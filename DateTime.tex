@@ -1,0 +1,331 @@
+%%
+%% DateTime.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Thu Jul 16 14:06:20 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+
+\chapter{Date Time}
+\label{chap:date-time}
+
+
+In this chapter, we will discuss important concepts about timing when
+designing a benchmark and also different subroutine/function to tell
+the date/time. 
+
+
+\section{Types of times}
+\label{sec:types-times}
+
+
+x86 CPUs provide 4 protection rings
+(0,1,2,3)\footnote{\url{http://en.wikibooks.org/wiki/Windows_Programming/User_Mode_vs_Kernel_Mode}}.
+The two most common modes are {\it user mode} and {\it kernel mode}:
+\begin{itemize}
+\item In kernel mode (ring 0 - maximum performance), the code can get
+  access to every resource. A code need to be in kernel mode to use
+  system calls.
+\item In user mode (ring 3 - maximum stability), the code has
+  restricted access to resources.
+\end{itemize}
+Transition between user mode and kernel mode is expensive. That's why
+programs that throw exception are slow, for
+example\footnote{\url{http://www.codinghorror.com/blog/archives/001029.html}}.
+
+Correspondingly, there are three types of times:
+\begin{itemize}
+\item {\bf User time}: total amount of time the CPU spending to run
+  user code (non-system calls), i.e. excluding the time the CPU
+  spending on the kernels (i.e. system calls like {\it exec} or
+  {\it folk}) or delay on I/O.
+\item {\bf System time}: the time that the code spends executing
+  system calls
+\item {\bf CPU time}: total amount of time the CPU spending to run your code
+  or anything else requested by your code, including the time the CPU
+  spending on the kernels. If you have more than one CPU, the time for
+  each is added. 
+\item {\bf Wall-clock time}: time taken to run your code from start to
+  end. This is equivalent to the time when you're timing your code
+  with a stopwatch. Thus this time can be affected by anything else,
+  like waiting for I/O, CPU is used by other programs. It includes
+  three terms: CPU time, I/O time, communication channel delay.
+\end{itemize}
+In general, for a sequential program, we will have
+{\it usertime $<$ CPU time $<$ wall-clock time} and
+\begin{eqnarray*}
+  \text{wall-clock time} \ge \text{user time} + \text{system time}
+\end{eqnarray*}
+However, this can be different for a parallel program running on
+multiple cores.
+
+With the \verb.time. command, we can have
+\begin{verbatim}
+!!! sequential code
+real  0m0.009s    ! wall-clock
+user  0m0.001s    ! user time
+sys  0m0.002s    ! system time
+!!! parallel (4 cores)
+real  40m12.994s 
+user  157m8.318s  ! almost 4 times of wall-clock
+                    ! as it is the total time of 4CPUs
+sys  0m1.486s
+\end{verbatim}
+% Time measurements using in a benchmark are usually defined as the
+% starting time and the ending time, the difference between them is
+% called the elapsed ``wall-clock'' time. However, during running the
+% program, it can not utilize the CPU all the time, but there are other
+% services or programs using the CPU also. Thus, the total time that the
+% program use the CPU is called the CPU time.
+
+References:
+\begin{itemize}
+\item \url{http://people.sc.fsu.edu/~burkardt/f_src/timer/timer.html}
+\item
+  \url{http://gwyn.tux.org/~balsa/linux/benchmarking/articles/html/Article1d-1.html}
+\item \url{http://www.ibiblio.org/pub/languages/fortran/ch3-10.html}
+\end{itemize}
+
+\subsection{Wall-clock time}
+\label{sec:wall-clock-time}
+
+
+Wall-clock time is the real-time system clock. It is different from
+CPU time, as it doesn't care whether the program/subprogram use the
+CPU or not. The ``wall-clock'' time is important in parallel
+programming, as we want to know both the CPU time and the time waiting
+for I/O or any other service. This can be obtained using
+
+\subsubsection{OpenMP}
+\label{sec:openmp-2}
+
+
+\begin{lstlisting}
+seconds = omp_get_wtime ( )
+   ///operations to time;
+seconds = omp_get_wtime ( ) - seconds;
+\end{lstlisting}
+
+
+\subsubsection{MPI}
+\label{sec:mpi-2}
+
+
+\begin{lstlisting}
+seconds = MPI_Wtime ( );
+   ///do something here
+seconds = MPI_Wtime ( ) - seconds;
+\end{lstlisting}
+
+\subsubsection{MatLab}
+\label{sec:matlab}
+
+Use tic and toc
+\begin{verbatim}
+tic;
+  ///do something here
+seconds = toc;
+\end{verbatim}
+
+
+
+\subsection{CPU Time}
+\label{sec:cpu-time}
+
+CPU time is the amount of elapsed computer time that was used by your
+program. So, this will count only the time that your program use the
+CPU. This is different from ``real'' time (or ``wall-clock'' time)
+which calculate the time since the program/subprogram start until it
+finish, including the time it waits for CPU, I/O, or other system
+functions. 
+
+With parallel programming, it is, however, more important to know the
+elapsed ``wall-clock'' time. You can go back to the previous section
+for this.
+
+
+
+The previous sections deal with real-time clock which is different
+from CPU time.  To know the CPU time (in seconds) taken by the current
+process (counting also all of its child processes) from the start of
+the program, you use the standard intrinsic \verb!CPU_TIME!. The
+difference with those using real-time clock is that it returns the
+time that the program is actually running, and not the time that the
+program is suspended or waiting. This is a more precise method to
+benchmark a program since there can be other programs are running on
+the CPU also.
+
+% Since Fortran 95, you can use this useful subroutine for testing
+% segments of code to determine the execution time (benchmarking).
+\begin{lstlisting}
+CALL CPU_TIME(time)
+\end{lstlisting}
+with the argument {\it time} (measured in seconds) is REAL,
+INTENT(OUT). The returned value varies depending upon the setting of
+XLFRTEOPTS environment variable. This can be done via the command line
+or using the subroutine {\bf setrteopts}, e.g.
+\begin{lstlisting}
+call setrteopts('cpu_time_type=alltime')
+call func()
+call CPU_TIME(T1)
+\end{lstlisting}
+This environment variable is checked only once and at the starting of
+the program. This, however, applies to XL-Fortran only.
+
+By taking the difference for the CPU time at two different points, we
+can know the running time. An alternate way is to use etime.
+
+Obsolete functions (not recommend to use): \verb!SECOND! (both
+subroutine and function)
+
+
+\section{Date \& Time}
+\label{sec:date--time}
+
+
+To get the current date and time in Fortran, you need 2 arrays of type
+INTEGER*4, each with 3 elements.
+\begin{itemize}
+\item idate returns an array with day, month, and year.
+\item itime returns an array with hour, minute, and second.
+\end{itemize}
+
+\begin{lstlisting}
+INTEGER*4 today(3), now(3)
+  ! today(1)=day, (2)=month, (3)=year
+CALL idate(today)   
+  ! now(1)=hour, (2)=minute, (3)=second
+CALL itime(now)     
+
+WRITE ( *, "('Date ', i2.2, '/', i2.2, '/', i4.4, &
+  '; time ', i2.2, ':', i2.2, ':', i2.2)" )  &
+   today(2), today(1), today(3), now
+\end{lstlisting}
+And output is 
+\begin{verbatim}
+Date 04/01/1995; time 14:07:40
+\end{verbatim}
+
+Since Fortran 95, you have another subroutine
+\begin{lstlisting}
+DATE_AND_TIME(DATE, TIME, ZONE, VALUES)
+\end{lstlisting}
+which returns the date and time from the wall-clock time,
+i.e. real-time clock. All are INTENT(OUT) arguments. The first three
+arguments are CHARACTERS, at least 8, 10 and 5 characters long,
+respectively; the fourth argument is INTEGER, DIMENSION(8).
+\begin{itemize}
+\item  DATE is in form $ccyymmdd$, 
+
+\item TIME is in form $hhmmss.sss$, 
+
+\item ZONE is in form $(\pm)hhmm$
+
+\item VALUES is an array of 8 elements
+
+  \begin{itemize}
+  \item   VALUE(1):   The year
+\item  VALUE(2):   The month
+\item  VALUE(3):   The day of the month
+\item   VALUE(4):   Time difference with UTC in minutes
+\item   VALUE(5):   The hour of the day
+\item   VALUE(6):   The minutes of the hour
+\item   VALUE(7):   The seconds of the minute
+\item VALUE(8): The milliseconds of the second
+  \end{itemize}
+\end{itemize}
+
+\section{SYSTEM clock}
+\label{sec:system-clock}
+
+Different CPU and compiler have different fast clock. This clock is
+ticking from the start of the program, and is at a given rate
+(i.e. number of ticks per second). The value of this counting rate is
+given by the output \verb!CLOCK_RATE!.
+
+
+Since Fortran 95, to determine the number of ticks per second in the
+wall-clock time, you use the subroutine {\bf SYSTEM\_CLOCK}. It counts
+times at a rate of \verb!count_rate! (counts per second); when it
+reaches \verb!count_max!, the count resets to zero and resume
+counting. 
+\begin{lstlisting}
+SYSTEM_CLOCK ([count, count_rate, count_max])
+\end{lstlisting}
+with all arguments are optionals and of type  INTEGER, INTENT(OUT).
+
+This subroutine returns the {\it count} in milliseconds of the system
+clock time since the Epoch (00:00:00 UTC, Jan 1, 1970). {\it
+  count\_rate} and {\it count\_max} are constant and specific to
+gfortran.
+
+If there is no clock, the count is set to $-HUGE(count)$, and the
+other two quantities are zero.
+
+
+
+\section{etime}
+\label{sec:etime}
+
+Up until Fortran 90, there is no intrinsic procedure to measure CPU
+time. We, however, can use {\bf etime} which is a UNIX system
+command\footnote{In XL-Fortran, it is defined in the {\it xlfutility}
+  module}.
+Thus, {\it etime} is not part of the language and cannot be use in
+other systems.
+
+\begin{lstlisting}
+use xlfutility
+\end{lstlisting}
+You can check how long your program have been running, regardless what
+else is running on the same processor. The time reports in seconds, in
+3 parts:
+\begin{itemize}
+\item  User time, time actually spent in your program;
+\item  System time, time spent in the operating system on your
+  program's behalf; and
+\item  Total time. 
+\end{itemize}
+
+{\bf etime} needs 2 output arguments: the first one returns the {\it
+  user-time}, the second one returns the {\it system-time}, and the
+function itself return the {\it total-time}.
+\begin{lstlisting}
+      real etime          ! Declare the type of etime()
+      real elapsed(2)     ! For receiving user and system time
+      real total          ! For receiving total time
+
+      total = etime(elapsed)
+      print *, 'End: total=', total, ' user=', elapsed(1),
+     &         ' system=', elapsed(2)
+\end{lstlisting}
+
+\section{Time in seconds}
+\label{sec:time-seconds}
+
+You can get the number of seconds elapsed since a given time point $X$
+(in seconds also) from the real-time system clock using a non-standard
+function (GNU extension) \verb!SECNDS(X)!  with $X$ is a reference
+time (in seconds). If $X=0$, the time, in seconds, calculated from
+mid-night is returned. It measure the number of seconds of maximum
+24hrs. 
+
+Thus, to calculate the runtime for a piece of code, you can use
+\begin{lstlisting}
+program test_secnds
+integer :: i
+real(4) :: t1, t2
+  print *, secnds (0.0)   ! seconds since midnight
+  t1 = secnds (0.0)       ! reference time
+  do i = 1, 10000000      ! do something
+  end do
+  t2 = secnds (t1)        ! elapsed time
+  print *, "Something took ", t2, " seconds."
+end program test_secnds
+\end{lstlisting}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

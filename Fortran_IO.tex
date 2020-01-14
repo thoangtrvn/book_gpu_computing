@@ -1,0 +1,43 @@
+%%
+%% Fortran_IO.tex
+%% Login : <hoang-trong@hoang-trong-laptop>
+%% Started on  Mon Jul 27 15:03:37 2009 Hoang-Trong Minh Tuan
+%% $Id$
+%% 
+%% Copyright (C) 2009 Hoang-Trong Minh Tuan
+%%
+
+\chapter{Fortran I/O}
+\label{chap:fortran-io}
+
+
+\section{Mechanism}
+\label{sec:mechanism}
+
+There are different ways to accomplish I/O tasks in Fortran. Data is
+transferred in and out between the program and devices or files
+through a Fortran {\bf logical unit}. A logical unit is an integer
+number of 4-byte, i.e. in the range 0..2,147,483,647.
+
+The character * can also be identified as a logical unit, and is used
+for standard input/output depending on where it appears, e.g. READ or
+WRITE.
+
+To work with a specific, named file, you need to use the OPEN
+statement to assign a logical unit to that named file. 
+
+\section{Default I/O}
+\label{sec:default-io}
+
+
+\section{Accessing a named file}
+\label{sec:accessing-named-file}
+
+\url{http://docs.sun.com/source/819-3685/2_io.html}
+
+\url{http://www.ibiblio.org/pub/languages/fortran/ch2-14.html}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "gpucomputing"
+%%% End: 

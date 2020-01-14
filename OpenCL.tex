@@ -1,0 +1,54 @@
+\chapter{OpenCL}
+
+In 2006 NVIDIA announced CUDA architecture along with APIs based on C language
+dedicated for GPU. OpenCL specification was published in 2009 and, unlike CUDA,
+is implemented in hardware produced by different companies, not only by NVIDIA.
+
+
+
+Matthew Scarpino's A Gentle Introduction to OpenCL,:
+\url{https://freecontent.manning.com/wp-content/uploads/a-gentle-introduction-to-opencl.pdf}
+
+In the era of heterogenous computing, one of the main advantage of OpenCL is portability.
+
+OpenCL defines a set of standardized APIs for evoking kernel/function to run on
+a computing architecture, e.g. CPU, GPU, FPGA.
+OpenCL-coded routines, called kernels, can execute on GPUs and CPUs from such
+popular manufacturers as Intel, AMD, Nvidia, and IBM.
+
+
+New OpenCL-capable devices appear regularly.
+There are efforts underway to port OpenCL to embedded devices, digital signal
+processors, and field-programmable gate arrays.
+
+IMPORTANTLY: a single application can dispatch kernels to multiple devices at
+once.
+
+CHALLENGE: OpenCL has one significant drawback: it’s not easy to learn
+
+\begin{itemize}
+  \item   OpenCL isn’t derived
+from MPI or PVM or any other distributed computing framework
+
+   \item  Its overall operation resembles that of NVIDIA’s
+CUDA, but OpenCL’s data structures and functions are unique.
+\end{itemize}
+
+Like a CUDA-enabled app, you need to write host-code (which run on x86 CPU), and
+then write OpenCL-based kernels (which can run on an OpenCL-capable device).
+
+\section{Host code}
+
+In developing an OpenCL project, the first step is to code the host application, which can be in C or C++.
+
+IMPORTANT:
+every host application requires five data structures: 
+\begin{verbatim}
+
+cl_device_id, cl_kernel,
+cl_program, cl_command_queue, and cl_context.
+
+\end{verbatim}
+
+At first, it  is hard to remember these structures and how they work together
+ 
